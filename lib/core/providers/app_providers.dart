@@ -1,0 +1,413 @@
+import 'dart:async';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:material_ui/material_ui.dart';
+
+import '../models/classroom.dart';
+import '../models/language_type.dart';
+import '../models/lesson.dart';
+import '../models/student.dart';
+import '../models/teacher.dart';
+import '../repositories/data_repository.dart';
+import '../repositories/demo_realtime_repository.dart';
+
+enum AppTab {
+  schedule('Schedule'),
+  teachers('Teachers'),
+  classrooms('Classrooms'),
+  students('Students');
+
+  const AppTab(this.label);
+  final String label;
+}
+
+enum ScheduleViewMode {
+  day('Day'),
+  week('Week'),
+  agenda('Agenda');
+
+  const ScheduleViewMode(this.label);
+  final String label;
+}
+
+@immutable
+class ScheduleFilterState {
+  const ScheduleFilterState({
+    this.language,
+    this.teacherId,
+    this.classroomId,
+    this.searchQuery = '',
+    required this.selectedDate,
+    this.viewMode = ScheduleViewMode.day,
+  });
+
+  final CourseLanguage? language;
+  final String? teacherId;
+  final String? classroomId;
+  final String searchQuery;
+  final DateTime selectedDate;
+  final ScheduleViewMode viewMode;
+
+  bool get hasActiveFilters =>
+      language != null ||
+      teacherId != null ||
+      classroomId != null ||
+      searchQuery.trim().isNotEmpty;
+
+  ScheduleFilterState copyWith({
+    CourseLanguage? language,
+    bool clearLanguage = false,
+    String? teacherId,
+    bool clearTeacher = false,
+    String? classroomId,
+    bool clearClassroom = false,
+    String? searchQuery,
+    DateTime? selectedDate,
+    ScheduleViewMode? viewMode,
+  }) {
+    return ScheduleFilterState(
+      language: clearLanguage ? null : (language ?? this.language),
+      teacherId: clearTeacher ? null : (teacherId ?? this.teacherId),
+      classroomId: clearClassroom ? null : (classroomId ?? this.classroomId),
+      searchQuery: searchQuery ?? this.searchQuery,
+      selectedDate: selectedDate ?? this.selectedDate,
+      viewMode: viewMode ?? this.viewMode,
+    );
+  }
+}
+
+/// Active inspector panel selection shown on tablet split / desktop slide-over.
+@immutable
+class InspectorTarget {
+  const InspectorTarget.lesson(this.id)
+      : kind = InspectorKind.lesson;
+  const InspectorTarget.teacher(this.id)
+      : kind = InspectorKind.teacher;
+  const InspectorTarget.classroom(this.id)
+      : kind = InspectorKind.classroom;
+  const InspectorTarget.student(this.id)
+      : kind = InspectorKind.student;
+
+  final InspectorKind kind;
+  final String id;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is InspectorTarget &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          id == other.id;
+
+  @override
+  int get hashCode => Object.hash(kind, id);
+}
+
+enum InspectorKind { lesson, teacher, classroom, student }
+
+@immutable
+class TodayPulseStats {
+  const TodayPulseStats({
+    required this.activeNowCount,
+    required this.todayTotalCount,
+    required this.freeClassroomsCount,
+    required this.totalClassroomsCount,
+    required this.activeStudentsCount,
+  });
+
+  final int activeNowCount;
+  final int todayTotalCount;
+  final int freeClassroomsCount;
+  final int totalClassroomsCount;
+  final int activeStudentsCount;
+}
+
+@immutable
+class ClassroomOccupancy {
+  const ClassroomOccupancy({
+    required this.classroom,
+    required this.activeLesson,
+    required this.activeTeacher,
+    required this.nextLessonToday,
+  });
+
+  final Classroom classroom;
+  final Lesson? activeLesson;
+  final Teacher? activeTeacher;
+  final Lesson? nextLessonToday;
+
+  bool get isOccupied => activeLesson != null;
+}
+
+// ---------------------------------------------------------------------------
+// Core Configuration & Runtime Overrides
+// ---------------------------------------------------------------------------
+
+final dataRepositoryProvider = Provider<DataRepository>((ref) {
+  final repo = DemoRealtimeRepository();
+  ref.onDispose(repo.dispose);
+  return repo;
+});
+
+final enableAmbientAnimationsProvider = Provider<bool>((ref) => true);
+final enableLiveClockTickerProvider = Provider<bool>((ref) => true);
+
+final liveClockProvider = StreamProvider<DateTime>((ref) {
+  final tickerEnabled = ref.watch(enableLiveClockTickerProvider);
+  if (!tickerEnabled) {
+    return Stream.value(DateTime.now());
+  }
+  return Stream<DateTime>.multi((controller) {
+    controller.add(DateTime.now());
+    final timer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => controller.add(DateTime.now()),
+    );
+    controller.onCancel = timer.cancel;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UI State Notifiers (Riverpod 3.x)
+// ---------------------------------------------------------------------------
+
+class ThemeModeNotifier extends Notifier<ThemeMode> {
+  @override
+  ThemeMode build() => ThemeMode.light;
+
+  void toggle() {
+    state = state == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+  }
+
+  void setMode(ThemeMode mode) => state = mode;
+}
+
+final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(
+  ThemeModeNotifier.new,
+);
+
+class NavigationTabNotifier extends Notifier<AppTab> {
+  @override
+  AppTab build() => AppTab.schedule;
+
+  void select(AppTab tab) => state = tab;
+}
+
+final navigationTabProvider = NotifierProvider<NavigationTabNotifier, AppTab>(
+  NavigationTabNotifier.new,
+);
+
+class InspectorSelectionNotifier extends Notifier<InspectorTarget?> {
+  @override
+  InspectorTarget? build() => null;
+
+  void open(InspectorTarget selection) => state = selection;
+  void close() => state = null;
+}
+
+final inspectorSelectionProvider =
+    NotifierProvider<InspectorSelectionNotifier, InspectorTarget?>(
+  InspectorSelectionNotifier.new,
+);
+
+class ScheduleFilterNotifier extends Notifier<ScheduleFilterState> {
+  @override
+  ScheduleFilterState build() {
+    final now = DateTime.now();
+    return ScheduleFilterState(
+      selectedDate: DateTime(now.year, now.month, now.day),
+    );
+  }
+
+  void setLanguage(CourseLanguage? language) {
+    state = language == null
+        ? state.copyWith(clearLanguage: true)
+        : state.copyWith(language: language);
+  }
+
+  void setTeacher(String? teacherId) {
+    state = teacherId == null
+        ? state.copyWith(clearTeacher: true)
+        : state.copyWith(teacherId: teacherId);
+  }
+
+  void setClassroom(String? classroomId) {
+    state = classroomId == null
+        ? state.copyWith(clearClassroom: true)
+        : state.copyWith(classroomId: classroomId);
+  }
+
+  void setSearchQuery(String query) {
+    state = state.copyWith(searchQuery: query);
+  }
+
+  void setSelectedDate(DateTime date) {
+    state = state.copyWith(
+      selectedDate: DateTime(date.year, date.month, date.day),
+    );
+  }
+
+  void jumpToToday() {
+    final now = DateTime.now();
+    state = state.copyWith(
+      selectedDate: DateTime(now.year, now.month, now.day),
+    );
+  }
+
+  void shiftDate(int days) {
+    state = state.copyWith(
+      selectedDate: state.selectedDate.add(Duration(days: days)),
+    );
+  }
+
+  void setViewMode(ScheduleViewMode mode) {
+    state = state.copyWith(viewMode: mode);
+  }
+
+  void clearAllFilters() {
+    state = state.copyWith(
+      clearLanguage: true,
+      clearTeacher: true,
+      clearClassroom: true,
+      searchQuery: '',
+    );
+  }
+}
+
+final scheduleFilterProvider =
+    NotifierProvider<ScheduleFilterNotifier, ScheduleFilterState>(
+  ScheduleFilterNotifier.new,
+);
+
+// ---------------------------------------------------------------------------
+// Real-Time Data Streams
+// ---------------------------------------------------------------------------
+
+final lessonsStreamProvider = StreamProvider<List<Lesson>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchLessons();
+});
+
+final teachersStreamProvider = StreamProvider<List<Teacher>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchTeachers();
+});
+
+final classroomsStreamProvider = StreamProvider<List<Classroom>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchClassrooms();
+});
+
+final studentsStreamProvider = StreamProvider<List<Student>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchStudents();
+});
+
+// ---------------------------------------------------------------------------
+// Derived Lookup Maps & Live Metrics
+// ---------------------------------------------------------------------------
+
+final teachersMapProvider = Provider<Map<String, Teacher>>((ref) {
+  final teachers = ref.watch(teachersStreamProvider).value ?? const [];
+  return {for (final t in teachers) t.id: t};
+});
+
+final classroomsMapProvider = Provider<Map<String, Classroom>>((ref) {
+  final classrooms = ref.watch(classroomsStreamProvider).value ?? const [];
+  return {for (final c in classrooms) c.id: c};
+});
+
+final studentsMapProvider = Provider<Map<String, Student>>((ref) {
+  final students = ref.watch(studentsStreamProvider).value ?? const [];
+  return {for (final s in students) s.id: s};
+});
+
+final filteredLessonsProvider = Provider<List<Lesson>>((ref) {
+  final lessons = ref.watch(lessonsStreamProvider).value ?? const [];
+  final filter = ref.watch(scheduleFilterProvider);
+  final teachers = ref.watch(teachersMapProvider);
+  final classrooms = ref.watch(classroomsMapProvider);
+  final students = ref.watch(studentsMapProvider);
+  final q = filter.searchQuery.trim().toLowerCase();
+
+  return lessons.where((lesson) {
+    if (filter.language != null && lesson.language != filter.language) {
+      return false;
+    }
+    if (filter.teacherId != null && lesson.teacherId != filter.teacherId) {
+      return false;
+    }
+    if (filter.classroomId != null &&
+        lesson.classroomId != filter.classroomId) {
+      return false;
+    }
+    if (q.isNotEmpty) {
+      final teacherName =
+          teachers[lesson.teacherId]?.fullName.toLowerCase() ?? '';
+      final roomName = classrooms[lesson.classroomId]?.name.toLowerCase() ?? '';
+      final studentNames = lesson.studentIds
+          .map((id) => students[id]?.fullName.toLowerCase() ?? '')
+          .join(' ');
+      final haystack =
+          '${lesson.title.toLowerCase()} $teacherName $roomName $studentNames ${lesson.notes.toLowerCase()}';
+      if (!haystack.contains(q)) return false;
+    }
+    return true;
+  }).toList(growable: false);
+});
+
+final classroomOccupancyProvider =
+    Provider<Map<String, ClassroomOccupancy>>((ref) {
+  final classrooms = ref.watch(classroomsStreamProvider).value ?? const [];
+  final lessons = ref.watch(lessonsStreamProvider).value ?? const [];
+  final teachers = ref.watch(teachersMapProvider);
+  final now = ref.watch(liveClockProvider).value ?? DateTime.now();
+
+  final result = <String, ClassroomOccupancy>{};
+  for (final room in classrooms) {
+    Lesson? active;
+    Lesson? nextToday;
+
+    for (final lesson in lessons) {
+      if (lesson.classroomId != room.id) continue;
+      if (lesson.isHappeningNowAt(now)) {
+        active ??= lesson;
+      } else if (lesson.isOnDate(now) &&
+          lesson.status != LessonStatus.canceled &&
+          lesson.status != LessonStatus.completed &&
+          lesson.startTime.isAfter(now)) {
+        if (nextToday == null ||
+            lesson.startTime.isBefore(nextToday.startTime)) {
+          nextToday = lesson;
+        }
+      }
+    }
+
+    result[room.id] = ClassroomOccupancy(
+      classroom: room,
+      activeLesson: active,
+      activeTeacher: active != null ? teachers[active.teacherId] : null,
+      nextLessonToday: nextToday,
+    );
+  }
+  return result;
+});
+
+final todayPulseProvider = Provider<TodayPulseStats>((ref) {
+  final lessons = ref.watch(lessonsStreamProvider).value ?? const [];
+  final classrooms = ref.watch(classroomsStreamProvider).value ?? const [];
+  final students = ref.watch(studentsStreamProvider).value ?? const [];
+  final occupancy = ref.watch(classroomOccupancyProvider);
+  final now = ref.watch(liveClockProvider).value ?? DateTime.now();
+
+  final activeNow = lessons.where((l) => l.isHappeningNowAt(now)).length;
+  final todayTotal = lessons
+      .where((l) => l.isOnDate(now) && l.status != LessonStatus.canceled)
+      .length;
+  final freeRooms =
+      occupancy.values.where((item) => !item.isOccupied).length;
+
+  return TodayPulseStats(
+    activeNowCount: activeNow,
+    todayTotalCount: todayTotal,
+    freeClassroomsCount: freeRooms,
+    totalClassroomsCount: classrooms.length,
+    activeStudentsCount: students.length,
+  );
+});
