@@ -496,7 +496,11 @@ class _ClubCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = club.language.accentColor(context);
+    final isKidsClub =
+        club.id == 'club_sat_kids' || club.title.toLowerCase().contains('kids');
+    final accent = isKidsClub
+        ? AppColors.chineseCoralGold
+        : club.language.accentColor(context);
     final selectedTeacherId =
         validTeacherIds.contains(club.teacherId) ? club.teacherId : null;
 
@@ -505,30 +509,24 @@ class _ClubCard extends StatelessWidget {
       blurSigma: 12,
       elevation: 0.35,
       tintColor: accent,
-      tintStrength: 0.08,
+      tintStrength: isKidsClub ? 0.12 : 0.08,
       padding: const EdgeInsets.all(14),
       onTap: onInspect,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              LanguageBadge(language: club.language, compact: true),
-              GlassInfoTag(
-                icon: CupertinoIcons.clock,
-                label:
-                    'Sat ${DateFormat('h:mm a').format(club.startTime)} • $roomName',
-              ),
-            ],
+          GlassInfoTag(
+            icon: CupertinoIcons.clock,
+            color: accent,
+            label:
+                'Sat ${DateFormat('h:mm a').format(club.startTime)} • $roomName',
           ),
           const SizedBox(height: 8),
           Text(
             club.title,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
+                  color: isKidsClub ? AppColors.chineseCoralGold : null,
                 ),
           ),
           const SizedBox(height: 10),
