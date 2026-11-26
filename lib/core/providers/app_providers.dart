@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../features/student_portal/l10n/student_portal_strings.dart';
 import '../models/classroom.dart';
+import '../models/community_models.dart';
 import '../models/homework.dart';
 import '../models/language_type.dart';
 import '../models/lesson.dart';
@@ -25,6 +26,7 @@ enum AppTab {
   students('Students'),
   finance('Finance'),
   leads('Leads'),
+  events('Events'),
   updates('Updates');
 
   const AppTab(this.label);
@@ -458,7 +460,54 @@ final myRescheduleRequestsProvider =
 
 final activityLogsStreamProvider =
     StreamProvider<List<ActivityLogEntry>>((ref) {
+  final user = ref.watch(authStateProvider).value;
+  if (user == null || !user.isStaff) return Stream.value(const []);
   return ref.watch(dataRepositoryProvider).watchActivityLogs();
+});
+
+/// Role-scoped center notifications stream.
+final notificationsStreamProvider =
+    StreamProvider<List<AppNotification>>((ref) {
+  final user = ref.watch(authStateProvider).value;
+  if (user == null) return Stream.value(const []);
+  final repo = ref.watch(dataRepositoryProvider);
+  if (user.isStaff) {
+    return repo.watchNotifications();
+  }
+  final joinedGroupIds =
+      ref.watch(studentPortalProfileProvider).value?.selectedGroupIds ??
+          const <String>[];
+  return repo.watchStudentNotifications(
+    uid: user.uid,
+    email: user.email,
+    joinedGroupIds: joinedGroupIds,
+  );
+});
+
+/// Unread notification badge count for the currently signed-in user.
+final unreadNotificationsCountProvider = Provider<int>((ref) {
+  final user = ref.watch(authStateProvider).value;
+  if (user == null) return 0;
+  final items = ref.watch(notificationsStreamProvider).value ?? const [];
+  return items.where((n) => !n.isReadBy(user.uid)).length;
+});
+
+/// Role-scoped center Events & History stream.
+final eventsStreamProvider = StreamProvider<List<CenterEvent>>((ref) {
+  final user = ref.watch(authStateProvider).value;
+  if (user == null) return Stream.value(const []);
+  final repo = ref.watch(dataRepositoryProvider);
+  if (user.isStaff) {
+    return repo.watchEvents();
+  }
+  final joinedGroupIds =
+      ref.watch(studentPortalProfileProvider).value?.selectedGroupIds ??
+          const <String>[];
+  return repo.watchStudentEvents(
+    uid: user.uid,
+    email: user.email,
+    joinedGroupIds: joinedGroupIds,
+  );
 });
 
 // ---------------------------------------------------------------------------

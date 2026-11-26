@@ -52,6 +52,18 @@ class _StudentSignedInAuthRepo extends _SignedOutCloudAuthRepo {
       );
 }
 
+class _StaffSignedInAuthRepo extends _SignedOutCloudAuthRepo {
+  @override
+  Stream<AuthUser?> watchAuthState() => Stream.value(
+        const AuthUser(
+          uid: 'staff_1',
+          email: 'sharllote@theword.kg',
+          displayName: 'Sharllote',
+          role: UserRole.staff,
+        ),
+      );
+}
+
 void main() {
   setUpAll(() {
     GoogleFonts.config.allowRuntimeFetching = false;
@@ -361,6 +373,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Joined ✓'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('HSK 1 Unit 3 Tone Drills & Audio'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('HSK 1 Unit 3 Tone Drills & Audio'), findsOneWidget);
     expect(find.text('Submit Answer / Link'), findsWidgets);
     await tester.scrollUntilVisible(
@@ -371,19 +389,75 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Request Change'), findsOneWidget);
 
-    // Scroll back up to top and verify 6-language switching (e.g. EN -> RU -> EN)
+    // Scroll back up to top and verify 6-language switching (e.g. EN -> RU)
     await tester.scrollUntilVisible(
-      find.text('EN'),
-      -250,
+      find.text('The Word • Student Portal'),
+      -350,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('EN'));
+    await tester.tap(find.text('EN').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Русский'));
     await tester.pumpAndSettle();
     expect(find.text('The Word • Кабинет ученика'), findsOneWidget);
     expect(find.text('Маршрут 2ГИС'), findsOneWidget);
+
+    // Verify Student Portal Notifications Bell & Scoped Events Section (Teachers Only hidden)
+    expect(find.byKey(const ValueKey('notification_bell_button')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('notification_bell_button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Центр уведомлений'), findsOneWidget);
+    expect(find.text('Teachers Sync: Monthly HSK Mock Tests'), findsNothing);
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('Ивенты и история'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Ивенты и история'), findsOneWidget);
+    expect(find.text('Staff Curriculum Alignment Briefing'), findsNothing);
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Staff Events tab & Notifications Compose render cleanly without overflow', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repo = DemoRealtimeRepository(referenceNow: DateTime(2026, 11, 26));
+    addTearDown(repo.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          dataRepositoryProvider.overrideWithValue(repo),
+          authRepositoryProvider.overrideWithValue(_StaffSignedInAuthRepo()),
+        ],
+        child: const TheWordApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Events').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Events & Event History'), findsOneWidget);
+    expect(find.text('Send Event Notification'), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('notification_bell_button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Notifications Center'), findsOneWidget);
+    expect(find.text('Send Alert'), findsOneWidget);
+
+    await tester.tap(find.text('Send Alert'));
+    await tester.pumpAndSettle();
+    expect(find.text('Quick Speaking Club Templates'), findsOneWidget);
+    expect(find.text('Club Topic (Тема клуба)'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
   });

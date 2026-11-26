@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/data/center_info.dart';
+import '../../../core/models/community_models.dart';
 import '../../../core/models/homework.dart';
 import '../../../core/models/language_type.dart';
 import '../../../core/models/operations_models.dart';
@@ -15,6 +16,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/glass_background.dart';
 import '../../../core/utils/reminder_helper.dart';
 import '../../../shared/widgets/appearance_settings_dialog.dart';
+import '../../community/presentation/notifications_sheet.dart';
 import '../../../shared/widgets/center_action_buttons.dart';
 import '../../../shared/widgets/language_badge.dart';
 import '../../../shared/widgets/liquid_glass_container.dart';
@@ -37,6 +39,7 @@ class StudentPortalScreen extends ConsumerWidget {
     final classrooms = ref.watch(classroomsMapProvider);
     final matchedStudent = ref.watch(myStudentRecordProvider).value;
     final myRequests = ref.watch(myRescheduleRequestsProvider).value ?? const [];
+    final centerEvents = ref.watch(eventsStreamProvider).value ?? const [];
     final animateBg = ref.watch(enableAmbientAnimationsProvider);
     final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
     final locale = ref.watch(portalLocaleProvider);
@@ -139,6 +142,24 @@ class StudentPortalScreen extends ConsumerWidget {
                           runSpacing: 6,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
+                            NotificationBellButton(
+                              tooltip: l10n.text('notificationsTitle'),
+                              labels: NotificationsInboxLabels(
+                                title: l10n.text('notificationsTitle'),
+                                emptyTitle: l10n.text('notificationsEmptyTitle'),
+                                emptySubtitle:
+                                    l10n.text('notificationsEmptySubtitle'),
+                                markAllRead:
+                                    l10n.text('notificationsMarkAllRead'),
+                                enablePush:
+                                    l10n.text('notificationsEnablePush'),
+                                pushEnabled:
+                                    l10n.text('notificationsPushActive'),
+                                clubTopicPrefix:
+                                    l10n.text('notificationsTopicPrefix'),
+                                unreadLabel: l10n.text('notificationsUnread'),
+                              ),
+                            ),
                             PopupMenuButton<PortalLocale>(
                               tooltip: l10n.text('languageLabel'),
                               onSelected: (loc) => ref
@@ -561,6 +582,8 @@ class StudentPortalScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 8),
                     ],
+                  const SizedBox(height: 22),
+                  _StudentEventsSection(events: centerEvents, l10n: l10n),
                 ],
               ),
             ),
@@ -1082,6 +1105,175 @@ class _StudentHomeworkCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _StudentEventsSection extends StatefulWidget {
+  const _StudentEventsSection({
+    required this.events,
+    required this.l10n,
+  });
+
+  final List<CenterEvent> events;
+  final StudentPortalL10n l10n;
+
+  @override
+  State<_StudentEventsSection> createState() => _StudentEventsSectionState();
+}
+
+class _StudentEventsSectionState extends State<_StudentEventsSection> {
+  bool _showHistory = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final upcoming = widget.events.where((e) => e.isUpcoming(now)).toList()
+      ..sort((a, b) => a.eventDate.compareTo(b.eventDate));
+    final past = widget.events.where((e) => e.isPast(now)).toList()
+      ..sort((a, b) => b.eventDate.compareTo(a.eventDate));
+    final shown = _showHistory ? past : upcoming;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          alignment: WrapAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.l10n.text('eventsSectionTitle'),
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  widget.l10n.text('eventsSectionSubtitle'),
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                ChoiceChip(
+                  label: Text(
+                    '${widget.l10n.text('eventsUpcomingTab')} (${upcoming.length})',
+                  ),
+                  selected: !_showHistory,
+                  onSelected: (_) => setState(() => _showHistory = false),
+                ),
+                ChoiceChip(
+                  label: Text(
+                    '${widget.l10n.text('eventsHistoryTab')} (${past.length})',
+                  ),
+                  selected: _showHistory,
+                  onSelected: (_) => setState(() => _showHistory = true),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (shown.isEmpty)
+          LiquidGlassContainer(
+            borderRadius: 20,
+            blurSigma: 16,
+            padding: const EdgeInsets.all(20),
+            child: Text(widget.l10n.text('eventsEmpty')),
+          )
+        else
+          for (final evt in shown) ...[
+            LiquidGlassContainer(
+              borderRadius: 20,
+              blurSigma: 16,
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      StatusBadge(
+                        label: evt.tag,
+                        color: evt.isUpcoming(now)
+                            ? AppColors.englishAccent(context)
+                            : AppColors.completedSlate,
+                        compact: true,
+                      ),
+                      Text(
+                        DateFormat('EEE, MMM d, yyyy • HH:mm')
+                            .format(evt.eventDate),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.englishAccent(context),
+                            ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    evt.title,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  if (evt.description.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      evt.description,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                            size: 14,
+                            color: AppColors.textMuted(context),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            evt.location,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                      if (evt.linkOrImageUrl.trim().startsWith('http'))
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          onPressed: () => ReminderHelper.openExternalUrl(
+                            context,
+                            evt.linkOrImageUrl.trim(),
+                          ),
+                          icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                          label: const Text('Link'),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+      ],
     );
   }
 }

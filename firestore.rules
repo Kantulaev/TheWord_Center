@@ -109,9 +109,75 @@ service cloud.firestore {
 
     // Student roster: staff full access; student can read ONLY their own matching email record.
     match /students/{studentId} {
-      allow read: if isAllowedStaff()
+      allow get: if isAllowedStaff()
+        || (isSignedIn() && (
+            studentId == ('auto_' + request.auth.uid)
+            || (resource != null && resource.data.email == normalizedEmail())
+        ));
+      allow list: if isAllowedStaff()
         || (isSignedIn() && resource.data.email == normalizedEmail());
+      allow create: if isAllowedStaff()
+        || (isSignedIn()
+            && studentId == ('auto_' + request.auth.uid)
+            && request.resource.data.id == studentId
+            && request.resource.data.email == normalizedEmail()
+            && request.resource.data.remainingCredits == 0
+            && request.resource.data.fullName is string
+            && request.resource.data.fullName.size() > 0);
+      allow update, delete: if isAllowedStaff();
+    }
+
+    function studentHasJoinedGroup(groupId) {
+      let profilePath = /databases/$(database)/documents/student_profiles/$(request.auth.uid);
+      return groupId is string
+        && exists(profilePath)
+        && get(profilePath).data.selectedGroupIds is list
+        && groupId in get(profilePath).data.selectedGroupIds;
+    }
+
+    function canReadTargetedCommunityDoc() {
+      return isAllowedStaff()
+        || (isSignedIn() && (
+            resource.data.audience in ['all', 'studentsOnly']
+            || studentHasJoinedGroup(resource.data.publicGroupId)
+            || normalizedEmail() in resource.data.targetEmails
+            || request.auth.uid in resource.data.targetUids
+        ));
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if canReadTargetedCommunityDoc();
+      allow create, delete: if isAllowedStaff();
+      allow update: if isAllowedStaff()
+        || (isSignedIn()
+            && canReadTargetedCommunityDoc()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readByUids'])
+            && request.resource.data.readByUids is list
+            && (!('readByUids' in resource.data)
+                || request.resource.data.readByUids.hasAll(resource.data.readByUids))
+            && request.resource.data.readByUids.size()
+                <= (('readByUids' in resource.data ? resource.data.readByUids.size() : 0) + 1));
+    }
+
+    match /events/{eventId} {
+      allow read: if canReadTargetedCommunityDoc();
       allow write: if isAllowedStaff();
+    }
+
+    match /fcm_tokens/{tokenDocId} {
+      allow read: if isAllowedStaff()
+        || (isSignedIn() && (
+            tokenDocId.matches('^' + request.auth.uid + '_.*')
+            || (resource != null && resource.data.uid == request.auth.uid)
+        ));
+      allow create, update: if isSignedIn()
+        && tokenDocId.matches('^' + request.auth.uid + '_.*')
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == normalizedEmail()
+        && request.resource.data.token is string
+        && request.resource.data.token.size() > 0;
+      allow delete: if isAllowedStaff()
+        || (isSignedIn() && tokenDocId.matches('^' + request.auth.uid + '_.*'));
     }
 
     // Staff-only operational & sensitive collections (lessons, Sharing, teacher salaries, finance, logs).

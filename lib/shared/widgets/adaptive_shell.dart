@@ -10,6 +10,8 @@ import '../../core/theme/glass_background.dart';
 import '../../features/auth/presentation/staff_access_dialog.dart';
 import '../../features/classrooms/presentation/classroom_detail_panel.dart';
 import '../../features/classrooms/presentation/classrooms_screen.dart';
+import '../../features/community/presentation/events_screen.dart';
+import '../../features/community/presentation/notifications_sheet.dart';
 import '../../features/finance/presentation/finance_screen.dart';
 import '../../features/groups/presentation/group_detail_panel.dart';
 import '../../features/groups/presentation/groups_screen.dart';
@@ -80,6 +82,8 @@ class _AdaptiveShellState extends ConsumerState<AdaptiveShell> {
                     ?.where((r) => r.status == RequestStatus.pending)
                     .length ??
                 0);
+    final eventsCount =
+        ref.watch(eventsStreamProvider).value?.length ?? 0;
     final updatesCount =
         ref.watch(activityLogsStreamProvider).value?.length ??
             kAppChangelog.length;
@@ -92,6 +96,7 @@ class _AdaptiveShellState extends ConsumerState<AdaptiveShell> {
       AppTab.students => const StudentsScreen(),
       AppTab.finance => const FinanceScreen(),
       AppTab.leads => const LeadsRequestsScreen(),
+      AppTab.events => const EventsScreen(),
       AppTab.updates => const UpdatesActivityScreen(),
     };
 
@@ -166,6 +171,7 @@ class _AdaptiveShellState extends ConsumerState<AdaptiveShell> {
                           AppTab.students: studentsCount,
                           AppTab.finance: paymentsCount,
                           AppTab.leads: leadsCount,
+                          AppTab.events: eventsCount,
                           AppTab.updates: updatesCount,
                         },
                         isCloudSync: repo.isCloudSync,
@@ -440,9 +446,15 @@ class _DesktopGlassSidebar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: _BrandMark(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(
+              children: const [
+                Expanded(child: _BrandMark()),
+                SizedBox(width: 4),
+                NotificationBellButton(),
+              ],
+            ),
           ),
           const SizedBox(height: 8),
           InkWell(
@@ -483,13 +495,13 @@ class _DesktopGlassSidebar extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           LiquidPrimaryButton(
             label: 'Schedule Lesson',
             icon: CupertinoIcons.plus,
             onPressed: onNewLesson,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Text(
             'WORKSPACE',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -498,7 +510,7 @@ class _DesktopGlassSidebar extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Expanded(
             child: SingleChildScrollView(
               child: Column(
@@ -510,7 +522,7 @@ class _DesktopGlassSidebar extends StatelessWidget {
                       selected: activeTab == tab,
                       onTap: () => onSelectTab(tab),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 2),
                   ],
                 ],
               ),
@@ -727,7 +739,7 @@ class _SidebarNavItem extends StatelessWidget {
       tintColor: selected ? accent : null,
       tintStrength: selected ? 0.14 : 0.0,
       isSelected: selected,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       onTap: onTap,
       child: Row(
         children: [
@@ -823,6 +835,8 @@ class _TabletGlassRail extends StatelessWidget {
                               : CupertinoIcons.chevron_right_2,
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      const NotificationBellButton(),
                       const SizedBox(height: 6),
                     ],
                   ),
@@ -929,14 +943,6 @@ class _MobileTopBar extends StatelessWidget {
           children: [
             const Expanded(child: _BrandMark(compact: true)),
             LiquidGlassPillButton(
-              label: 'v$kCurrentAppVersion',
-              accentColor: AppColors.liveEmerald,
-              selected: true,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              onTap: onOpenUpdates,
-            ),
-            const SizedBox(width: 4),
-            LiquidGlassPillButton(
               label: isCloudSync ? 'Cloud' : 'Demo',
               accentColor: isCloudSync
                   ? AppColors.liveEmerald
@@ -945,35 +951,43 @@ class _MobileTopBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
               onTap: onShowSyncInfo,
             ),
-            const SizedBox(width: 2),
+            const SizedBox(width: 4),
+            const NotificationBellButton(compact: true),
             IconButton(
               visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               tooltip: 'Staff Access',
               onPressed: onOpenStaffAccess,
               icon: const Icon(
                 CupertinoIcons.person_badge_plus,
-                size: 19,
+                size: 18,
               ),
             ),
             IconButton(
               visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               tooltip: 'Toggle Theme',
               onPressed: onToggleTheme,
               icon: Icon(
                 isDark
                     ? CupertinoIcons.moon_stars_fill
                     : CupertinoIcons.sun_max_fill,
-                size: 19,
+                size: 18,
               ),
             ),
             if (onSignOut != null)
               IconButton(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 tooltip: 'Sign Out',
                 onPressed: onSignOut,
                 icon: const Icon(
                   CupertinoIcons.square_arrow_right,
                   color: AppColors.dangerRose,
-                  size: 20,
+                  size: 19,
                 ),
               ),
           ],
@@ -1003,6 +1017,7 @@ class _MobileFloatingNavBar extends StatelessWidget {
     AppTab.teachers,
     AppTab.classrooms,
     AppTab.leads,
+    AppTab.events,
     AppTab.updates,
   ];
 
@@ -1195,6 +1210,8 @@ IconData _iconForTab(AppTab tab, bool selected) {
         : CupertinoIcons.money_dollar_circle,
     AppTab.leads =>
       selected ? CupertinoIcons.sparkles : CupertinoIcons.sparkles,
+    AppTab.events =>
+      selected ? Icons.celebration_rounded : Icons.celebration_outlined,
     AppTab.updates =>
       selected ? CupertinoIcons.rocket_fill : CupertinoIcons.rocket,
   };

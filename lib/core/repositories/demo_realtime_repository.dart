@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../models/classroom.dart';
+import '../models/community_models.dart';
 import '../models/homework.dart';
 import '../models/language_type.dart';
 import '../models/lesson.dart';
@@ -29,6 +30,8 @@ class DemoRealtimeRepository implements DataRepository {
   final _leadsCtrl = StreamController<List<TrialLead>>.broadcast();
   final _requestsCtrl = StreamController<List<RescheduleRequest>>.broadcast();
   final _activityCtrl = StreamController<List<ActivityLogEntry>>.broadcast();
+  final _notificationsCtrl = StreamController<List<AppNotification>>.broadcast();
+  final _eventsCtrl = StreamController<List<CenterEvent>>.broadcast();
 
   final Map<String, Lesson> _lessons = {};
   final Map<String, Teacher> _teachers = {};
@@ -42,6 +45,9 @@ class DemoRealtimeRepository implements DataRepository {
   final Map<String, TrialLead> _leads = {};
   final Map<String, RescheduleRequest> _requests = {};
   final List<ActivityLogEntry> _activity = [];
+  final Map<String, AppNotification> _notifications = {};
+  final Map<String, CenterEvent> _events = {};
+  final Map<String, Map<String, dynamic>> _fcmTokens = {};
 
   bool _disposed = false;
 
@@ -73,6 +79,10 @@ class DemoRealtimeRepository implements DataRepository {
       List.unmodifiable(_requests.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt)));
   List<ActivityLogEntry> _sortedActivity() =>
       List.unmodifiable(_activity);
+  List<AppNotification> _sortedNotifications() =>
+      List.unmodifiable(_notifications.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt)));
+  List<CenterEvent> _sortedEvents() =>
+      List.unmodifiable(_events.values.toList()..sort((a, b) => b.eventDate.compareTo(a.eventDate)));
 
   Stream<T> _replayStream<T>(T Function() snapshot, Stream<T> updates) {
     return Stream<T>.multi((controller) {
@@ -218,6 +228,51 @@ class DemoRealtimeRepository implements DataRepository {
   Stream<List<ActivityLogEntry>> watchActivityLogs() => _replayStream(_sortedActivity, _activityCtrl.stream);
 
   @override
+  Stream<List<AppNotification>> watchNotifications() =>
+      _replayStream(_sortedNotifications, _notificationsCtrl.stream);
+
+  @override
+  Stream<List<AppNotification>> watchStudentNotifications({
+    required String uid,
+    required String email,
+    required List<String> joinedGroupIds,
+  }) {
+    List<AppNotification> filter([List<AppNotification>? items]) =>
+        List.unmodifiable(
+          (items ?? _sortedNotifications()).where(
+            (n) => n.isVisibleToStudent(
+              studentUid: uid,
+              studentEmail: email,
+              joinedGroupIds: joinedGroupIds,
+            ),
+          ),
+        );
+    return _replayStream(filter, _notificationsCtrl.stream.map(filter));
+  }
+
+  @override
+  Stream<List<CenterEvent>> watchEvents() =>
+      _replayStream(_sortedEvents, _eventsCtrl.stream);
+
+  @override
+  Stream<List<CenterEvent>> watchStudentEvents({
+    required String uid,
+    required String email,
+    required List<String> joinedGroupIds,
+  }) {
+    List<CenterEvent> filter([List<CenterEvent>? items]) => List.unmodifiable(
+          (items ?? _sortedEvents()).where(
+            (e) => e.isVisibleToStudent(
+              studentUid: uid,
+              studentEmail: email,
+              joinedGroupIds: joinedGroupIds,
+            ),
+          ),
+        );
+    return _replayStream(filter, _eventsCtrl.stream.map(filter));
+  }
+
+  @override
   Stream<StudentPortalProfile> watchStudentPortalProfile({
     required String uid,
     required String email,
@@ -244,6 +299,8 @@ class DemoRealtimeRepository implements DataRepository {
   void _emitLeads() { if (!_disposed) _leadsCtrl.add(_sortedLeads()); }
   void _emitRequests() { if (!_disposed) _requestsCtrl.add(_sortedRequests()); }
   void _emitActivity() { if (!_disposed) _activityCtrl.add(_sortedActivity()); }
+  void _emitNotifications() { if (!_disposed) _notificationsCtrl.add(_sortedNotifications()); }
+  void _emitEvents() { if (!_disposed) _eventsCtrl.add(_sortedEvents()); }
 
   @override
   Future<void> upsertLesson(Lesson lesson) async {
@@ -477,6 +534,156 @@ class DemoRealtimeRepository implements DataRepository {
   @override
   Future<void> seedInitialCenterDataIfNeeded({bool force = false}) async {}
 
+  static const List<String> _autoPalette = [
+    '1E66F5',
+    'D93848',
+    '10B981',
+    '6366F1',
+    '0D9488',
+    'F59E0B',
+  ];
+
+  static String _fallbackNameFromEmail(String email) {
+    final local = email.split('@').first;
+    final parts = local
+        .split(RegExp(r'[._-]+'))
+        .where((p) => p.isNotEmpty)
+        .map((p) => '${p[0].toUpperCase()}${p.substring(1)}');
+    return parts.isEmpty ? 'Member' : parts.join(' ');
+  }
+
+  @override
+  Future<bool> ensureUserRegisteredOnSignIn({
+    required String uid,
+    required String email,
+    required String displayName,
+    required bool isStaff,
+  }) async {
+    final normEmail = email.trim().toLowerCase();
+    if (uid.trim().isEmpty || normEmail.isEmpty) return false;
+    final safeName = displayName.trim().isNotEmpty
+        ? displayName.trim()
+        : _fallbackNameFromEmail(normEmail);
+    final autoId = 'auto_$uid';
+
+    if (isStaff) {
+      final exists = _teachers.values.any(
+        (t) => t.id == autoId || t.email.trim().toLowerCase() == normEmail,
+      );
+      if (exists) return false;
+
+      final hex = _autoPalette[normEmail.hashCode.abs() % _autoPalette.length];
+      _teachers[autoId] = Teacher(
+        id: autoId,
+        fullName: safeName,
+        avatarColorHex: hex,
+        languages: TeachingLanguageScope.both,
+        specializations: const ['HSK 1-6', 'Speaking Club'],
+        email: normEmail,
+        isActive: true,
+        notes: 'Auto-linked via Google Sign-In',
+        createdAt: DateTime.now(),
+      );
+      _emitTeachers();
+      return true;
+    }
+
+    final exists = _students.values.any(
+      (s) => s.id == autoId || s.email.trim().toLowerCase() == normEmail,
+    );
+    if (exists) return false;
+
+    _students[autoId] = Student(
+      id: autoId,
+      fullName: safeName,
+      targetLanguage: CourseLanguage.chinese,
+      proficiencyLevel: 'HSK 1',
+      format: LessonType.group,
+      remainingCredits: 0,
+      email: normEmail,
+      notes: 'Auto-registered via Google Sign-In',
+      createdAt: DateTime.now(),
+    );
+    _emitStudents();
+    return true;
+  }
+
+  @override
+  Future<void> saveFcmToken({
+    required String uid,
+    required String email,
+    required String role,
+    required String token,
+    required String platform,
+  }) async {
+    if (uid.trim().isEmpty || token.trim().isEmpty) return;
+    _fcmTokens['${uid}_$platform'] = {
+      'uid': uid,
+      'email': email.trim().toLowerCase(),
+      'role': role,
+      'token': token.trim(),
+      'platform': platform,
+    };
+  }
+
+  @override
+  Future<void> upsertNotification(AppNotification notification) async {
+    _notifications[notification.id] = notification;
+    _emitNotifications();
+  }
+
+  @override
+  Future<void> deleteNotification(String notificationId) async {
+    _notifications.remove(notificationId);
+    _emitNotifications();
+  }
+
+  @override
+  Future<void> markNotificationRead({
+    required String notificationId,
+    required String uid,
+  }) async {
+    final existing = _notifications[notificationId];
+    if (existing == null || uid.trim().isEmpty) return;
+    if (!existing.readByUids.contains(uid)) {
+      _notifications[notificationId] = existing.copyWith(
+        readByUids: [...existing.readByUids, uid],
+      );
+      _emitNotifications();
+    }
+  }
+
+  @override
+  Future<void> markAllNotificationsRead({
+    required List<String> notificationIds,
+    required String uid,
+  }) async {
+    if (uid.trim().isEmpty) return;
+    var changed = false;
+    for (final id in notificationIds) {
+      final existing = _notifications[id];
+      if (existing != null && !existing.readByUids.contains(uid)) {
+        _notifications[id] = existing.copyWith(
+          readByUids: [...existing.readByUids, uid],
+        );
+        changed = true;
+      }
+    }
+    if (changed) _emitNotifications();
+  }
+
+  @override
+  Future<void> upsertEvent(CenterEvent event) async {
+    _events[event.id] = event;
+    _emitEvents();
+  }
+
+  @override
+  Future<void> deleteEvent(String eventId) async {
+    _events.remove(eventId);
+    _emitEvents();
+  }
+
   @override
   Future<void> dispose() async {
     _disposed = true;
@@ -493,6 +700,8 @@ class DemoRealtimeRepository implements DataRepository {
       _leadsCtrl.close(),
       _requestsCtrl.close(),
       _activityCtrl.close(),
+      _notificationsCtrl.close(),
+      _eventsCtrl.close(),
     ]);
   }
 
@@ -516,6 +725,12 @@ class DemoRealtimeRepository implements DataRepository {
     }
     for (final club in CenterSeedData.buildSaturdayClubs(now)) {
       _lessons[club.id] = club;
+    }
+    for (final n in CenterSeedData.buildDemoNotifications(now)) {
+      _notifications[n.id] = n;
+    }
+    for (final evt in CenterSeedData.buildDemoEvents(now)) {
+      _events[evt.id] = evt;
     }
 
     final liveStart1 = _clampSameDay(

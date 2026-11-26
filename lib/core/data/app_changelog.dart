@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-const String kCurrentAppVersion = '1.6.1';
+const String kCurrentAppVersion = '1.7.0';
 
 enum ReleaseChangeType { newFeature, improved, fixed }
 
@@ -34,6 +34,30 @@ class AppReleaseNote {
 
 /// Official in-app changelog displayed to teachers & staff under "What's New".
 const List<AppReleaseNote> kAppChangelog = [
+  AppReleaseNote(
+    version: '1.7.0',
+    dateLabel: 'May 2026',
+    title: 'Notifications Center, Auto-Registration & Events History',
+    summary:
+        'Automated Google Sign-In roster linking for teachers and students, Speaking Club push alerts via FCM & Firebase Analytics, and date-grouped Events & History with audience permissions.',
+    highlights: [
+      ReleaseHighlight(
+        type: ReleaseChangeType.newFeature,
+        text:
+            'Auto-Registration on Sign-In: whitelisted staff automatically link to Teachers Directory and learners auto-register in Students with zero duplicates.',
+      ),
+      ReleaseHighlight(
+        type: ReleaseChangeType.newFeature,
+        text:
+            'Notifications & Speaking Club Alerts: targeted announcements (All, Teachers, Students, Specific Group, or Selected Users), Club Topic templates, unread bell badge, Web/Android push sync, and Firebase Analytics.',
+      ),
+      ReleaseHighlight(
+        type: ReleaseChangeType.improved,
+        text:
+            'Events & Event History: Upcoming and Past Events grouped chronologically by month with flexible visibility controls and 1-click event notifications.',
+      ),
+    ],
+  ),
   AppReleaseNote(
     version: '1.6.1',
     dateLabel: 'Nov 26, 2026',

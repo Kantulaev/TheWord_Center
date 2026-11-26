@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/classroom.dart';
+import '../models/community_models.dart';
 import '../models/homework.dart';
 import '../models/language_type.dart';
 import '../models/lesson.dart';
@@ -53,6 +54,12 @@ class FirestoreRepository implements DataRepository {
       _db.collection('reschedule_requests');
   CollectionReference<Map<String, dynamic>> get _activityCol =>
       _db.collection('activity_logs');
+  CollectionReference<Map<String, dynamic>> get _notificationsCol =>
+      _db.collection('notifications');
+  CollectionReference<Map<String, dynamic>> get _eventsCol =>
+      _db.collection('events');
+  CollectionReference<Map<String, dynamic>> get _fcmTokensCol =>
+      _db.collection('fcm_tokens');
   DocumentReference<Map<String, dynamic>> get _metaDoc =>
       _db.collection('center_config').doc('meta');
 
@@ -400,6 +407,210 @@ class FirestoreRepository implements DataRepository {
   }
 
   @override
+  Stream<List<AppNotification>> watchNotifications() {
+    return _notificationsCol
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .snapshots()
+        .map(
+          (snap) => snap.docs
+              .map(
+                (doc) => AppNotification.fromMap(
+                  doc.data(),
+                  documentId: doc.id,
+                ),
+              )
+              .toList(growable: false),
+        );
+  }
+
+  @override
+  Stream<List<AppNotification>> watchStudentNotifications({
+    required String uid,
+    required String email,
+    required List<String> joinedGroupIds,
+  }) {
+    return _watchStudentScopedCollection<AppNotification>(
+      col: _notificationsCol,
+      fromMap: (data, id) => AppNotification.fromMap(data, documentId: id),
+      idOf: (n) => n.id,
+      isVisible: (n) => n.isVisibleToStudent(
+        studentUid: uid,
+        studentEmail: email,
+        joinedGroupIds: joinedGroupIds,
+      ),
+      sortComparator: (a, b) => b.createdAt.compareTo(a.createdAt),
+      uid: uid,
+      email: email,
+      joinedGroupIds: joinedGroupIds,
+      maxItems: 50,
+    );
+  }
+
+  @override
+  Stream<List<CenterEvent>> watchEvents() {
+    return _eventsCol
+        .orderBy('eventDate', descending: true)
+        .limit(60)
+        .snapshots()
+        .map(
+          (snap) => snap.docs
+              .map(
+                (doc) => CenterEvent.fromMap(
+                  doc.data(),
+                  documentId: doc.id,
+                ),
+              )
+              .toList(growable: false),
+        );
+  }
+
+  @override
+  Stream<List<CenterEvent>> watchStudentEvents({
+    required String uid,
+    required String email,
+    required List<String> joinedGroupIds,
+  }) {
+    return _watchStudentScopedCollection<CenterEvent>(
+      col: _eventsCol,
+      fromMap: (data, id) => CenterEvent.fromMap(data, documentId: id),
+      idOf: (e) => e.id,
+      isVisible: (e) => e.isVisibleToStudent(
+        studentUid: uid,
+        studentEmail: email,
+        joinedGroupIds: joinedGroupIds,
+      ),
+      sortComparator: (a, b) => b.eventDate.compareTo(a.eventDate),
+      uid: uid,
+      email: email,
+      joinedGroupIds: joinedGroupIds,
+      maxItems: 60,
+    );
+  }
+
+  Stream<List<T>> _watchStudentScopedCollection<T>({
+    required CollectionReference<Map<String, dynamic>> col,
+    required T Function(Map<String, dynamic> data, String id) fromMap,
+    required String Function(T item) idOf,
+    required bool Function(T item) isVisible,
+    required int Function(T a, T b) sortComparator,
+    required String uid,
+    required String email,
+    required List<String> joinedGroupIds,
+    required int maxItems,
+  }) {
+    final normEmail = email.trim().toLowerCase();
+    final cleanGroups = joinedGroupIds
+        .map((g) => g.trim())
+        .where((g) => g.isNotEmpty)
+        .toSet()
+        .take(10)
+        .toList();
+
+    return Stream<List<T>>.multi((controller) {
+      final buckets = <String, List<T>>{};
+      var hasPublicBucket = false;
+
+      void emitMerged() {
+        if (!hasPublicBucket && buckets.isEmpty) return;
+        final byId = <String, T>{};
+        for (final list in buckets.values) {
+          for (final item in list) {
+            if (isVisible(item)) {
+              byId[idOf(item)] = item;
+            }
+          }
+        }
+        final sorted = byId.values.toList()..sort(sortComparator);
+        controller.add(
+          List.unmodifiable(
+            sorted.length > maxItems ? sorted.sublist(0, maxItems) : sorted,
+          ),
+        );
+      }
+
+      final subs = <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
+
+      subs.add(
+        col
+            .where('audience', whereIn: const ['all', 'studentsOnly'])
+            .limit(35)
+            .snapshots()
+            .listen(
+              (snap) {
+                hasPublicBucket = true;
+                buckets['public'] = snap.docs
+                    .map((d) => fromMap(d.data(), d.id))
+                    .toList(growable: false);
+                emitMerged();
+              },
+              onError: controller.addError,
+            ),
+      );
+
+      if (cleanGroups.isNotEmpty) {
+        subs.add(
+          col
+              .where('publicGroupId', whereIn: cleanGroups)
+              .limit(20)
+              .snapshots()
+              .listen(
+                (snap) {
+                  buckets['groups'] = snap.docs
+                      .map((d) => fromMap(d.data(), d.id))
+                      .toList(growable: false);
+                  emitMerged();
+                },
+                onError: (_) {},
+              ),
+        );
+      }
+
+      if (normEmail.isNotEmpty) {
+        subs.add(
+          col
+              .where('targetEmails', arrayContains: normEmail)
+              .limit(25)
+              .snapshots()
+              .listen(
+                (snap) {
+                  buckets['email'] = snap.docs
+                      .map((d) => fromMap(d.data(), d.id))
+                      .toList(growable: false);
+                  emitMerged();
+                },
+                onError: (_) {},
+              ),
+        );
+      }
+
+      if (uid.isNotEmpty) {
+        subs.add(
+          col
+              .where('targetUids', arrayContains: uid)
+              .limit(25)
+              .snapshots()
+              .listen(
+                (snap) {
+                  buckets['uid'] = snap.docs
+                      .map((d) => fromMap(d.data(), d.id))
+                      .toList(growable: false);
+                  emitMerged();
+                },
+                onError: (_) {},
+              ),
+        );
+      }
+
+      controller.onCancel = () async {
+        for (final sub in subs) {
+          await sub.cancel();
+        }
+      };
+    });
+  }
+
+  @override
   Future<void> upsertLesson(Lesson lesson) {
     return _lessonsCol
         .doc(lesson.id)
@@ -412,15 +623,17 @@ class FirestoreRepository implements DataRepository {
 
   @override
   Future<void> upsertTeacher(Teacher teacher) async {
+    final normalized = teacher.email.trim().toLowerCase();
+    final sanitized = teacher.copyWith(email: normalized);
     final batch = _db.batch();
     batch.set(
-      _teachersCol.doc(teacher.id),
-      teacher.toMap(useFirestoreTimestamp: true),
+      _teachersCol.doc(sanitized.id),
+      sanitized.toMap(useFirestoreTimestamp: true),
       SetOptions(merge: true),
     );
     batch.set(
-      _publicTeachersCol.doc(teacher.id),
-      teacher.toPublicMap(),
+      _publicTeachersCol.doc(sanitized.id),
+      sanitized.toPublicMap(),
     );
     await batch.commit();
   }
@@ -680,6 +893,172 @@ class FirestoreRepository implements DataRepository {
     }
   }
 
+  static const List<String> _autoPalette = [
+    '1E66F5',
+    'D93848',
+    '10B981',
+    '6366F1',
+    '0D9488',
+    'F59E0B',
+  ];
+
+  static String _fallbackNameFromEmail(String email) {
+    final local = email.split('@').first;
+    final parts = local
+        .split(RegExp(r'[._-]+'))
+        .where((p) => p.isNotEmpty)
+        .map((p) => '${p[0].toUpperCase()}${p.substring(1)}');
+    return parts.isEmpty ? 'Member' : parts.join(' ');
+  }
+
+  @override
+  Future<bool> ensureUserRegisteredOnSignIn({
+    required String uid,
+    required String email,
+    required String displayName,
+    required bool isStaff,
+  }) async {
+    final normEmail = email.trim().toLowerCase();
+    if (uid.trim().isEmpty || normEmail.isEmpty) return false;
+    final safeName = displayName.trim().isNotEmpty
+        ? displayName.trim()
+        : _fallbackNameFromEmail(normEmail);
+    final autoId = 'auto_$uid';
+
+    if (isStaff) {
+      final snap = await _teachersCol.limit(100).get();
+      for (final doc in snap.docs) {
+        final teacher = Teacher.fromMap(doc.data(), documentId: doc.id);
+        final tEmail = teacher.email.trim().toLowerCase();
+        if (tEmail == normEmail || doc.id == autoId) {
+          if (tEmail != normEmail) {
+            await upsertTeacher(teacher.copyWith(email: normEmail));
+          } else {
+            await _publicTeachersCol
+                .doc(teacher.id)
+                .set(teacher.toPublicMap(), SetOptions(merge: true));
+          }
+          return false;
+        }
+      }
+
+      final hex = _autoPalette[normEmail.hashCode.abs() % _autoPalette.length];
+      final newTeacher = Teacher(
+        id: autoId,
+        fullName: safeName,
+        avatarColorHex: hex,
+        languages: TeachingLanguageScope.both,
+        specializations: const ['HSK 1-6', 'Speaking Club'],
+        email: normEmail,
+        isActive: true,
+        notes: 'Auto-linked via Google Sign-In',
+        createdAt: DateTime.now(),
+      );
+      await upsertTeacher(newTeacher);
+      return true;
+    }
+
+    final byEmail = await _studentsCol
+        .where('email', isEqualTo: normEmail)
+        .limit(1)
+        .get();
+    if (byEmail.docs.isNotEmpty) return false;
+
+    final autoRef = _studentsCol.doc(autoId);
+    final autoSnap = await autoRef.get();
+    if (autoSnap.exists) return false;
+
+    final newStudent = Student(
+      id: autoId,
+      fullName: safeName,
+      targetLanguage: CourseLanguage.chinese,
+      proficiencyLevel: 'HSK 1',
+      format: LessonType.group,
+      remainingCredits: 0,
+      email: normEmail,
+      notes: 'Auto-registered via Google Sign-In',
+      createdAt: DateTime.now(),
+    );
+    await autoRef.set(newStudent.toMap(useFirestoreTimestamp: true));
+    return true;
+  }
+
+  @override
+  Future<void> saveFcmToken({
+    required String uid,
+    required String email,
+    required String role,
+    required String token,
+    required String platform,
+  }) async {
+    final normEmail = email.trim().toLowerCase();
+    if (uid.trim().isEmpty || normEmail.isEmpty || token.trim().isEmpty) {
+      return;
+    }
+    final docId = '${uid}_$platform';
+    await _fcmTokensCol.doc(docId).set({
+      'uid': uid,
+      'email': normEmail,
+      'role': role,
+      'token': token.trim(),
+      'platform': platform,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  @override
+  Future<void> upsertNotification(AppNotification notification) {
+    return _notificationsCol.doc(notification.id).set(
+          notification.toMap(useFirestoreTimestamp: true),
+          SetOptions(merge: true),
+        );
+  }
+
+  @override
+  Future<void> deleteNotification(String notificationId) =>
+      _notificationsCol.doc(notificationId).delete();
+
+  @override
+  Future<void> markNotificationRead({
+    required String notificationId,
+    required String uid,
+  }) async {
+    if (uid.trim().isEmpty) return;
+    await _notificationsCol.doc(notificationId).update({
+      'readByUids': FieldValue.arrayUnion([uid]),
+    });
+  }
+
+  @override
+  Future<void> markAllNotificationsRead({
+    required List<String> notificationIds,
+    required String uid,
+  }) async {
+    if (uid.trim().isEmpty || notificationIds.isEmpty) return;
+    for (var i = 0; i < notificationIds.length; i += 350) {
+      final chunk = notificationIds.skip(i).take(350);
+      final batch = _db.batch();
+      for (final id in chunk) {
+        batch.update(_notificationsCol.doc(id), {
+          'readByUids': FieldValue.arrayUnion([uid]),
+        });
+      }
+      await batch.commit();
+    }
+  }
+
+  @override
+  Future<void> upsertEvent(CenterEvent event) {
+    return _eventsCol.doc(event.id).set(
+          event.toMap(useFirestoreTimestamp: true),
+          SetOptions(merge: true),
+        );
+  }
+
+  @override
+  Future<void> deleteEvent(String eventId) =>
+      _eventsCol.doc(eventId).delete();
+
   bool _seedAttempted = false;
 
   /// Single-document metadata check (1 read total when already migrated/seeded)
@@ -693,7 +1072,7 @@ class FirestoreRepository implements DataRepository {
       final metaSnap = await _metaDoc.get();
       final schemaVersion =
           (metaSnap.data()?['schemaVersion'] as num?)?.toInt() ?? 0;
-      if (!force && metaSnap.exists && schemaVersion >= 3) {
+      if (!force && metaSnap.exists && schemaVersion >= 4) {
         return;
       }
 
@@ -703,6 +1082,8 @@ class FirestoreRepository implements DataRepository {
       final groupsSnap = await _groupsCol.get();
       final clubSnap =
           await _lessonsCol.doc(CenterSeedData.clubKidsId).get();
+      final notificationsSnap = await _notificationsCol.limit(1).get();
+      final eventsSnap = await _eventsCol.limit(1).get();
 
       final batch = _db.batch();
 
@@ -772,9 +1153,29 @@ class FirestoreRepository implements DataRepository {
         }
       }
 
+      if (force || notificationsSnap.docs.isEmpty) {
+        for (final n in CenterSeedData.buildDemoNotifications(now)) {
+          batch.set(
+            _notificationsCol.doc(n.id),
+            n.toMap(useFirestoreTimestamp: true),
+            SetOptions(merge: true),
+          );
+        }
+      }
+
+      if (force || eventsSnap.docs.isEmpty) {
+        for (final evt in CenterSeedData.buildDemoEvents(now)) {
+          batch.set(
+            _eventsCol.doc(evt.id),
+            evt.toMap(useFirestoreTimestamp: true),
+            SetOptions(merge: true),
+          );
+        }
+      }
+
       batch.set(_metaDoc, {
         'seeded': true,
-        'schemaVersion': 3,
+        'schemaVersion': 4,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 

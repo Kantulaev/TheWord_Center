@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:the_word/core/data/center_info.dart';
 import 'package:the_word/core/models/classroom.dart';
+import 'package:the_word/core/models/community_models.dart';
 import 'package:the_word/core/models/homework.dart';
 import 'package:the_word/core/models/language_type.dart';
 import 'package:the_word/core/models/lesson.dart';
@@ -657,6 +658,158 @@ void main() {
         CenterInfo.twoGisUrl,
         contains('70000001036390791'),
       );
+    });
+  });
+
+  group('Notifications, Events & Auto-Registration v1.7.0', () {
+    test('ensureUserRegisteredOnSignIn creates records once without duplicates', () async {
+      final repo = DemoRealtimeRepository(referenceNow: DateTime(2026, 11, 26));
+
+      final createdStudent1 = await repo.ensureUserRegisteredOnSignIn(
+        uid: 'uid_alice',
+        email: 'Alice.Student@Gmail.com',
+        displayName: 'Alice Wonderland',
+        isStaff: false,
+      );
+      expect(createdStudent1, isTrue);
+
+      final studentsAfterFirst = await repo.watchStudents().first;
+      expect(
+        studentsAfterFirst.where((s) => s.email == 'alice.student@gmail.com').length,
+        1,
+      );
+
+      final createdStudentDup = await repo.ensureUserRegisteredOnSignIn(
+        uid: 'uid_alice_second_login',
+        email: 'ALICE.STUDENT@gmail.com',
+        displayName: 'Alice',
+        isStaff: false,
+      );
+      expect(createdStudentDup, isFalse);
+      final studentsAfterDup = await repo.watchStudents().first;
+      expect(
+        studentsAfterDup.where((s) => s.email == 'alice.student@gmail.com').length,
+        1,
+      );
+
+      final createdTeacher1 = await repo.ensureUserRegisteredOnSignIn(
+        uid: 'uid_teacher_new',
+        email: 'New.Staff@theword.kg',
+        displayName: 'Elena Coach',
+        isStaff: true,
+      );
+      expect(createdTeacher1, isTrue);
+
+      final createdTeacherDup = await repo.ensureUserRegisteredOnSignIn(
+        uid: 'uid_teacher_new',
+        email: 'new.staff@theword.kg',
+        displayName: 'Elena Coach',
+        isStaff: true,
+      );
+      expect(createdTeacherDup, isFalse);
+      await repo.dispose();
+    });
+
+    test('Notifications & Events isolate Teachers Only vs Student/Group/Selected targets', () async {
+      final repo = DemoRealtimeRepository(referenceNow: DateTime(2026, 11, 26));
+      final now = DateTime(2026, 11, 26, 12, 0);
+
+      await repo.upsertNotification(
+        AppNotification(
+          id: 'n_teachers',
+          title: 'Internal Staff Note',
+          message: 'Salary & room audit',
+          audience: AudienceType.teachersOnly,
+          createdAt: now,
+        ),
+      );
+      await repo.upsertNotification(
+        AppNotification(
+          id: 'n_selected',
+          title: 'VIP Speaking Invitation',
+          message: 'Room 2 at 16:00',
+          audience: AudienceType.selectedUsers,
+          targetEmails: const ['target@student.kg'],
+          createdAt: now,
+        ),
+      );
+      await repo.upsertNotification(
+        AppNotification(
+          id: 'n_club_topic',
+          title: 'Chinese Club Topic',
+          message: 'Come practice tones!',
+          category: NotificationCategory.speakingClub,
+          clubPreset: SpeakingClubPreset.chineseClub,
+          clubTopic: 'Ordering Tea in Beijing',
+          audience: AudienceType.studentsOnly,
+          createdAt: now,
+        ),
+      );
+
+      final targetStudentNotifs = await repo
+          .watchStudentNotifications(
+            uid: 'u_target',
+            email: 'Target@Student.kg',
+            joinedGroupIds: const ['grp_hsk1_morning'],
+          )
+          .first;
+      final otherStudentNotifs = await repo
+          .watchStudentNotifications(
+            uid: 'u_other',
+            email: 'other@student.kg',
+            joinedGroupIds: const [],
+          )
+          .first;
+
+      expect(targetStudentNotifs.any((n) => n.id == 'n_teachers'), isFalse);
+      expect(targetStudentNotifs.any((n) => n.id == 'n_selected'), isTrue);
+      expect(targetStudentNotifs.any((n) => n.id == 'n_club_topic'), isTrue);
+
+      expect(otherStudentNotifs.any((n) => n.id == 'n_selected'), isFalse);
+      expect(otherStudentNotifs.any((n) => n.id == 'n_teachers'), isFalse);
+      expect(otherStudentNotifs.any((n) => n.id == 'n_club_topic'), isTrue);
+
+      await repo.markNotificationRead(
+        notificationId: 'n_club_topic',
+        uid: 'u_other',
+      );
+      final afterRead = await repo
+          .watchStudentNotifications(
+            uid: 'u_other',
+            email: 'other@student.kg',
+            joinedGroupIds: const [],
+          )
+          .first;
+      final readDoc = afterRead.firstWhere((n) => n.id == 'n_club_topic');
+      expect(readDoc.isReadBy('u_other'), isTrue);
+
+      final visibleEventsForStudent = await repo
+          .watchStudentEvents(
+            uid: 'u_other',
+            email: 'other@student.kg',
+            joinedGroupIds: const [],
+          )
+          .first;
+      expect(
+        visibleEventsForStudent.any((e) => e.audience == AudienceType.teachersOnly),
+        isFalse,
+      );
+      expect(
+        visibleEventsForStudent.any((e) => e.isUpcoming(now)),
+        isTrue,
+      );
+      expect(
+        visibleEventsForStudent.any((e) => e.isPast(now)),
+        isTrue,
+      );
+
+      for (final loc in PortalLocale.values) {
+        final l10n = StudentPortalL10n(loc);
+        expect(l10n.text('notificationsTitle'), isNotEmpty);
+        expect(l10n.text('eventsSectionTitle'), isNotEmpty);
+      }
+
+      await repo.dispose();
     });
   });
 }

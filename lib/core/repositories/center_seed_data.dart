@@ -1,4 +1,5 @@
 import '../models/classroom.dart';
+import '../models/community_models.dart';
 import '../models/homework.dart';
 import '../models/language_type.dart';
 import '../models/lesson.dart';
@@ -422,6 +423,150 @@ abstract final class CenterSeedData {
         teacherId: 't_sharllote',
         dueDate: today.add(const Duration(days: 3)),
         createdAt: today.subtract(const Duration(days: 1)),
+      ),
+    ];
+  }
+
+  static List<AppNotification> buildDemoNotifications(DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    final saturdayOffset = (DateTime.saturday - now.weekday + 7) % 7;
+    final nextSat = today.add(
+      Duration(days: saturdayOffset == 0 ? 7 : saturdayOffset),
+    );
+    return [
+      AppNotification(
+        id: 'notif_sat_chinese_club',
+        title: 'Chinese Speaking Club This Saturday!',
+        message:
+            'Join Sharllote in the Main Hall for tea table conversation and fun speaking prompts.',
+        category: NotificationCategory.speakingClub,
+        clubPreset: SpeakingClubPreset.chineseClub,
+        clubTopic: 'Ordering Street Food & Tea Culture in Beijing',
+        scheduledAt: DateTime(nextSat.year, nextSat.month, nextSat.day, 15, 0),
+        audience: AudienceType.all,
+        createdByName: 'Sharllote',
+        createdAt: now.subtract(const Duration(hours: 2)),
+      ),
+      AppNotification(
+        id: 'notif_sat_english_club',
+        title: 'English Speaking Club Topic Announced',
+        message:
+            'All CEFR levels welcome in Main Hall! Warm-up games + small group discussions.',
+        category: NotificationCategory.speakingClub,
+        clubPreset: SpeakingClubPreset.englishClub,
+        clubTopic: 'Travel Stories & Cultural Shocks Around the World',
+        scheduledAt: DateTime(nextSat.year, nextSat.month, nextSat.day, 17, 0),
+        audience: AudienceType.studentsOnly,
+        createdByName: 'Keith',
+        createdAt: now.subtract(const Duration(hours: 5)),
+      ),
+      AppNotification(
+        id: 'notif_hsk1_reminder',
+        title: 'HSK 1 Morning: Tone Drills Reminder',
+        message:
+            'Don\'t forget to submit Unit 3 audio drills in your Student Portal before class.',
+        category: NotificationCategory.reminder,
+        audience: AudienceType.specificGroup,
+        targetGroupId: 'grp_hsk1_morning',
+        targetGroupName: 'HSK 1 Morning',
+        targetEmails: const ['liam@student.kg', 'aisha@student.kg'],
+        createdByName: 'Olga',
+        createdAt: now.subtract(const Duration(hours: 8)),
+      ),
+      AppNotification(
+        id: 'notif_staff_briefing',
+        title: 'Teachers Sync: Monthly HSK Mock Tests',
+        message:
+            'Please verify attendance credits and readiness tags before Friday evening.',
+        category: NotificationCategory.announcement,
+        audience: AudienceType.teachersOnly,
+        createdByName: 'Admin Desk',
+        createdAt: now.subtract(const Duration(days: 1)),
+      ),
+    ];
+  }
+
+  static List<CenterEvent> buildDemoEvents(DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    final saturdayOffset = (DateTime.saturday - now.weekday + 7) % 7;
+    final nextSat = today.add(
+      Duration(days: saturdayOffset == 0 ? 7 : saturdayOffset),
+    );
+    return [
+      CenterEvent(
+        id: 'evt_tea_speaking_club',
+        title: 'Saturday Chinese Tea & Speaking Club',
+        description:
+            'Topic: Ordering Street Food & Tea Culture. Open to all HSK students and guests.',
+        eventDate: DateTime(nextSat.year, nextSat.month, nextSat.day, 15, 0),
+        location: 'Main Hall (Ogonbaeva 222)',
+        tag: 'Speaking Club',
+        createdByName: 'Sharllote',
+        audience: AudienceType.all,
+        createdAt: now.subtract(const Duration(days: 2)),
+      ),
+      CenterEvent(
+        id: 'evt_english_movie_club',
+        title: 'English Cinema & Debate Evening',
+        description:
+            'Watch short cinema clips, discuss idioms with Keith & Andrew, and practice spontaneous speaking.',
+        eventDate: today.add(const Duration(days: 5, hours: 18, minutes: 30)),
+        location: 'Main Hall',
+        tag: 'Movie Night',
+        createdByName: 'Keith',
+        audience: AudienceType.studentsOnly,
+        createdAt: now.subtract(const Duration(days: 1)),
+      ),
+      CenterEvent(
+        id: 'evt_hsk1_vocab_bootcamp',
+        title: 'HSK 1 Morning Character Bootcamp',
+        description:
+            'Extra stroke-order and radical mastery session for our HSK 1 Morning cohort.',
+        eventDate: today.add(const Duration(days: 3, hours: 11)),
+        location: 'Classroom 3',
+        tag: 'Workshop',
+        createdByName: 'Olga',
+        audience: AudienceType.specificGroup,
+        targetGroupId: 'grp_hsk1_morning',
+        targetGroupName: 'HSK 1 Morning',
+        targetEmails: const ['liam@student.kg', 'aisha@student.kg'],
+        createdAt: now.subtract(const Duration(days: 1)),
+      ),
+      CenterEvent(
+        id: 'evt_staff_curriculum_review',
+        title: 'Staff Curriculum Alignment Briefing',
+        description:
+            'Internal instructors sync on Q2 HSK 2 & IELTS syllabi and club schedules.',
+        eventDate: today.add(const Duration(days: 4, hours: 13)),
+        location: 'Classroom 1',
+        tag: 'Staff Meeting',
+        createdByName: 'Sharllote',
+        audience: AudienceType.teachersOnly,
+        createdAt: now.subtract(const Duration(days: 2)),
+      ),
+      CenterEvent(
+        id: 'evt_past_calligraphy_day',
+        title: 'Spring Chinese Calligraphy & Dumpling Day',
+        description:
+            'Hands-on brush calligraphy workshop and cultural celebration with 28 students.',
+        eventDate: today.subtract(const Duration(days: 12, hours: 9)),
+        location: 'Main Hall',
+        tag: 'Cultural Day',
+        createdByName: 'Masha',
+        audience: AudienceType.all,
+        createdAt: today.subtract(const Duration(days: 20)),
+      ),
+      CenterEvent(
+        id: 'evt_past_ielts_mock',
+        title: 'April Full IELTS Speaking Mock Exam',
+        description:
+            '1-on-1 simulated Band 7.5+ interviews with individualized feedback notes.',
+        eventDate: today.subtract(const Duration(days: 27, hours: 10)),
+        location: 'Classroom 4 & 5',
+        tag: 'HSK Exam',
+        createdByName: 'Andrew',
+        audience: AudienceType.studentsOnly,
+        createdAt: today.subtract(const Duration(days: 35)),
       ),
     ];
   }

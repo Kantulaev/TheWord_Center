@@ -1,4 +1,5 @@
 import '../models/classroom.dart';
+import '../models/community_models.dart';
 import '../models/homework.dart';
 import '../models/lesson.dart';
 import '../models/operations_models.dart';
@@ -36,6 +37,48 @@ abstract class DataRepository {
   Stream<List<RescheduleRequest>> watchRescheduleRequests();
   Stream<List<RescheduleRequest>> watchMyRescheduleRequests(String studentUid);
   Stream<List<ActivityLogEntry>> watchActivityLogs();
+
+  Stream<List<AppNotification>> watchNotifications();
+  Stream<List<AppNotification>> watchStudentNotifications({
+    required String uid,
+    required String email,
+    required List<String> joinedGroupIds,
+  });
+  Stream<List<CenterEvent>> watchEvents();
+  Stream<List<CenterEvent>> watchStudentEvents({
+    required String uid,
+    required String email,
+    required List<String> joinedGroupIds,
+  });
+
+  Future<bool> ensureUserRegisteredOnSignIn({
+    required String uid,
+    required String email,
+    required String displayName,
+    required bool isStaff,
+  });
+
+  Future<void> saveFcmToken({
+    required String uid,
+    required String email,
+    required String role,
+    required String token,
+    required String platform,
+  });
+
+  Future<void> upsertNotification(AppNotification notification);
+  Future<void> deleteNotification(String notificationId);
+  Future<void> markNotificationRead({
+    required String notificationId,
+    required String uid,
+  });
+  Future<void> markAllNotificationsRead({
+    required List<String> notificationIds,
+    required String uid,
+  });
+
+  Future<void> upsertEvent(CenterEvent event);
+  Future<void> deleteEvent(String eventId);
 
   Future<void> upsertLesson(Lesson lesson);
   Future<void> deleteLesson(String lessonId);
