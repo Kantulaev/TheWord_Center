@@ -3,14 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../../../core/data/center_info.dart';
 import '../../../core/models/language_type.dart';
 import '../../../core/models/lesson.dart';
 import '../../../core/models/teacher.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/utils/reminder_helper.dart';
-import '../../../shared/widgets/center_action_buttons.dart';
 import '../../../shared/widgets/confirm_delete_dialog.dart';
 import '../../../shared/widgets/language_badge.dart';
 import '../../../shared/widgets/liquid_glass_container.dart';
@@ -138,59 +135,6 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
 
         // Today's Pulse Summary Strip
         const TodaysPulseStrip(),
-        const SizedBox(height: 12),
-
-        // Official Center Operating Hours & Bishkek Branch Bar
-        LiquidGlassContainer(
-          borderRadius: 20,
-          blurSigma: 18,
-          elevation: 0.45,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Wrap(
-            spacing: 14,
-            runSpacing: 8,
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    CupertinoIcons.clock_fill,
-                    size: 16,
-                    color: AppColors.englishAccent(context),
-                  ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      '${CenterInfo.compactHoursSummary}  •  ${CenterInfo.address}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-                ],
-              ),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  const PhoneCallBadgeButton(
-                    phoneDisplay: CenterInfo.primaryPhone,
-                    phoneTel: CenterInfo.primaryPhoneTel,
-                  ),
-                  WhatsAppBadgeButton(
-                    onPressed: () => ReminderHelper.openWhatsApp(
-                      context,
-                      phone: CenterInfo.whatsappPhone,
-                      message: 'Hello The Word Language Center!',
-                    ),
-                  ),
-                  const TwoGisRouteButton(),
-                ],
-              ),
-            ],
-          ),
-        ),
         const SizedBox(height: 16),
 
         // Saturday Speaking Clubs (Weekly Recurring + Responsible Teacher Selector)

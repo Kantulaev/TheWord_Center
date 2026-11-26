@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/data/app_changelog.dart';
-import '../../core/data/center_info.dart';
 import '../../core/models/operations_models.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/theme/app_colors.dart';
@@ -303,17 +302,10 @@ class _AdaptiveShellState extends ConsumerState<AdaptiveShell> {
                 const SizedBox(height: 10),
                 Text(
                   repo.isCloudSync
-                      ? 'All schedule updates, teachers, classrooms, and student credits sync live via Cloud Firestore with local cache persistence & role isolation (Sharing groups & salaries hidden from students).'
-                      : 'Running with reactive in-memory demo data.\n\n${CenterInfo.address}\n${CenterInfo.compactHoursSummary}\n${CenterInfo.primaryPhone} • ${CenterInfo.secondaryPhone}',
+                      ? 'All schedule updates, teachers, classrooms, and student credits sync live via Cloud Firestore with local cache persistence & role isolation.'
+                      : 'Running with reactive in-memory demo data.',
                   style: Theme.of(dialogContext).textTheme.bodyMedium,
                 ),
-                if (repo.isCloudSync) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    '${CenterInfo.address}\n${CenterInfo.compactHoursSummary}\n${CenterInfo.primaryPhone} • ${CenterInfo.secondaryPhone}',
-                    style: Theme.of(dialogContext).textTheme.bodySmall,
-                  ),
-                ],
                 const SizedBox(height: 18),
                 Align(
                   alignment: Alignment.centerRight,

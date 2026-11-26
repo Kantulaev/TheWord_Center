@@ -154,29 +154,17 @@ class _DayTimetableViewState extends ConsumerState<DayTimetableView> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 2, 6, 10),
-            child: Wrap(
-              spacing: 10,
-              runSpacing: 6,
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                StatusBadge(
-                  label: dayHours.isOpen
-                      ? '${dayHours.shortDay} Operating Hours: ${dayHours.displayRange}'
-                      : '${dayHours.shortDay}: Center Closed (Day Off)',
-                  color: dayHours.isOpen
-                      ? AppColors.liveEmerald
-                      : AppColors.warningAmber,
-                  icon: dayHours.isOpen
-                      ? CupertinoIcons.clock_fill
-                      : CupertinoIcons.moon_zzz_fill,
-                  compact: true,
-                ),
-                Text(
-                  CenterInfo.address,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
+            child: StatusBadge(
+              label: dayHours.isOpen
+                  ? '${dayHours.shortDay} Operating Hours: ${dayHours.displayRange}'
+                  : '${dayHours.shortDay}: Center Closed (Day Off)',
+              color: dayHours.isOpen
+                  ? AppColors.liveEmerald
+                  : AppColors.warningAmber,
+              icon: dayHours.isOpen
+                  ? CupertinoIcons.clock_fill
+                  : CupertinoIcons.moon_zzz_fill,
+              compact: true,
             ),
           ),
           SingleChildScrollView(
