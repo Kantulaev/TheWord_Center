@@ -173,7 +173,9 @@ final allowedEmailsProvider = StreamProvider<List<AllowedStaffEmail>>((ref) {
   return ref.watch(authRepositoryProvider).watchAllowedEmails();
 });
 
-final enableAmbientAnimationsProvider = Provider<bool>((ref) => true);
+// Static aurora mesh avoids continuous per-frame repaints behind translucent cards,
+// keeping frame pacing locked at 120 FPS on phones and web.
+final enableAmbientAnimationsProvider = Provider<bool>((ref) => false);
 final enableLiveClockTickerProvider = Provider<bool>((ref) => true);
 
 final liveClockProvider = StreamProvider<DateTime>((ref) {

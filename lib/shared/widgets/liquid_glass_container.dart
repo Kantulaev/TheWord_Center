@@ -1,14 +1,16 @@
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/theme/app_colors.dart';
 
-/// Signature Apple "Liquid Glass" container featuring:
-/// - Real-time [BackdropFilter] Gaussian refraction blur
-/// - Multi-layered translucent pearl-white (light) or obsidian (dark) fill
-/// - 1px specular top-left light-catching gradient rim
-/// - Soft ambient elevation shadows & tactile hover/press micro-interaction
+/// Signature Apple "Liquid Glass" surface optimized for 120 FPS:
+/// - Multi-layered translucent pearl-white (light) or obsidian (dark) frosted gradient
+/// - 1px specular top-left light-catching rim
+/// - Optional real-time [BackdropFilter] blur reserved ONLY for top-level floating
+///   chrome/modals ([enableBlur] = true) so scrollable cards never trigger expensive
+///   offscreen GPU render passes during scrolling.
 class LiquidGlassContainer extends StatefulWidget {
   const LiquidGlassContainer({
     super.key,
@@ -17,6 +19,7 @@ class LiquidGlassContainer extends StatefulWidget {
     this.margin,
     this.borderRadius = 24.0,
     this.blurSigma = 22.0,
+    this.enableBlur = false,
     this.tintColor,
     this.tintStrength = 0.08,
     this.elevation = 1.0,
@@ -34,6 +37,7 @@ class LiquidGlassContainer extends StatefulWidget {
   final EdgeInsetsGeometry? margin;
   final double borderRadius;
   final double blurSigma;
+  final bool enableBlur;
   final Color? tintColor;
   final double tintStrength;
   final double elevation;
@@ -53,19 +57,35 @@ class _LiquidGlassContainerState extends State<LiquidGlassContainer> {
   bool _hovered = false;
   bool _pressed = false;
 
+  bool get _allowDesktopHover =>
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux;
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final interactive = widget.onTap != null || widget.onLongPress != null;
     final radius = BorderRadius.circular(widget.borderRadius);
 
+    // Slightly richer translucent frost when real-time blur is skipped gives
+    // identical visual depth at a tiny fraction of GPU cost.
     final effectiveTint = widget.tintColor;
     final baseStart = isDark
-        ? Colors.white.withValues(alpha: _hovered ? 0.14 : 0.10)
-        : Colors.white.withValues(alpha: _hovered ? 0.84 : 0.74);
+        ? Color(0xFF131B2E).withValues(
+            alpha: widget.enableBlur ? (_hovered ? 0.42 : 0.34) : (_hovered ? 0.90 : 0.82),
+          )
+        : Colors.white.withValues(
+            alpha: widget.enableBlur ? (_hovered ? 0.84 : 0.74) : (_hovered ? 0.94 : 0.88),
+          );
     final baseEnd = isDark
-        ? const Color(0xFF0F172A).withValues(alpha: _hovered ? 0.70 : 0.62)
-        : Colors.white.withValues(alpha: _hovered ? 0.62 : 0.50);
+        ? const Color(0xFF0B1120).withValues(
+            alpha: widget.enableBlur ? (_hovered ? 0.68 : 0.60) : (_hovered ? 0.86 : 0.78),
+          )
+        : Colors.white.withValues(
+            alpha: widget.enableBlur ? (_hovered ? 0.62 : 0.50) : (_hovered ? 0.82 : 0.74),
+          );
 
     final startColor = effectiveTint != null
         ? Color.alphaBlend(
@@ -88,10 +108,44 @@ class _LiquidGlassContainerState extends State<LiquidGlassContainer> {
           )
         : baseEnd;
 
-    final shadowAlpha = isDark ? 0.34 : 0.08;
-    final scale = _pressed
-        ? 0.985
-        : (_hovered && interactive && widget.enableHover ? 1.006 : 1.0);
+    final shadowAlpha = isDark ? 0.28 : 0.07;
+
+    Widget surface = Container(
+      padding: widget.padding,
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [startColor, endColor],
+        ),
+      ),
+      child: widget.child,
+    );
+
+    surface = CustomPaint(
+      painter: _SpecularBorderPainter(
+        borderRadius: widget.borderRadius,
+        isDark: isDark,
+        accentColor: widget.isSelected ? effectiveTint : null,
+        isHighlighted: _hovered || widget.isSelected,
+      ),
+      child: surface,
+    );
+
+    if (widget.enableBlur && widget.blurSigma > 0.5) {
+      final cappedSigma = widget.blurSigma.clamp(0.0, 12.0);
+      surface = ClipRRect(
+        borderRadius: radius,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: cappedSigma,
+            sigmaY: cappedSigma,
+          ),
+          child: surface,
+        ),
+      );
+    }
 
     Widget content = Container(
       width: widget.width,
@@ -105,11 +159,11 @@ class _LiquidGlassContainerState extends State<LiquidGlassContainer> {
                 BoxShadow(
                   color: (effectiveTint ?? Colors.black).withValues(
                     alpha: widget.isSelected
-                        ? shadowAlpha * 1.45
+                        ? shadowAlpha * 1.35
                         : shadowAlpha * widget.elevation,
                   ),
-                  blurRadius: 24 * widget.elevation,
-                  offset: Offset(0, 10 * widget.elevation),
+                  blurRadius: 18 * widget.elevation,
+                  offset: Offset(0, 8 * widget.elevation),
                   spreadRadius: -4,
                 ),
                 if (!isDark)
@@ -120,68 +174,35 @@ class _LiquidGlassContainerState extends State<LiquidGlassContainer> {
                   ),
               ],
       ),
-      child: ClipRRect(
-        borderRadius: radius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: widget.blurSigma,
-            sigmaY: widget.blurSigma,
-          ),
-          child: CustomPaint(
-            painter: _SpecularBorderPainter(
-              borderRadius: widget.borderRadius,
-              isDark: isDark,
-              accentColor: widget.isSelected ? effectiveTint : null,
-              isHighlighted: _hovered || widget.isSelected,
-            ),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              padding: widget.padding,
-              decoration: BoxDecoration(
-                borderRadius: radius,
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [startColor, endColor],
-                ),
-              ),
-              child: widget.child,
-            ),
-          ),
-        ),
-      ),
+      child: surface,
     );
 
     if (interactive) {
-      content = MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() {
-          _hovered = false;
-          _pressed = false;
-        }),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (_) => setState(() => _pressed = true),
-          onTapUp: (_) => setState(() => _pressed = false),
-          onTapCancel: () => setState(() => _pressed = false),
-          onTap: widget.onTap,
-          onLongPress: widget.onLongPress,
-          child: AnimatedScale(
-            scale: scale,
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            child: content,
-          ),
-        ),
+      final scale = _pressed
+          ? 0.985
+          : (_hovered && _allowDesktopHover && widget.enableHover ? 1.004 : 1.0);
+      content = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
+        child: _pressed
+            ? Transform.scale(scale: scale, child: content)
+            : (scale != 1.0 ? Transform.scale(scale: scale, child: content) : content),
       );
-    } else if (widget.enableHover) {
-      content = MouseRegion(
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: content,
-      );
+      if (_allowDesktopHover && widget.enableHover) {
+        content = MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() {
+            _hovered = false;
+            _pressed = false;
+          }),
+          child: content,
+        );
+      }
     }
 
     if (widget.margin != null) {
@@ -279,8 +300,9 @@ class LiquidGlassPillButton extends StatelessWidget {
 
     return LiquidGlassContainer(
       borderRadius: 999,
-      blurSigma: 16,
-      elevation: selected ? 0.9 : 0.35,
+      blurSigma: 0,
+      enableBlur: false,
+      elevation: selected ? 0.65 : 0.2,
       tintColor: selected ? effectiveAccent : null,
       tintStrength: selected ? 0.14 : 0.0,
       isSelected: selected,

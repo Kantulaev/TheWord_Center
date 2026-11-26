@@ -22,33 +22,36 @@ class LiquidAuroraBackground extends StatefulWidget {
 
 class _LiquidAuroraBackgroundState extends State<LiquidAuroraBackground>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
+  AnimationController? _controller;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 24),
-    );
     if (widget.animate) {
-      _controller.repeat();
+      _controller = AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 24),
+      )..repeat();
     }
   }
 
   @override
   void didUpdateWidget(covariant LiquidAuroraBackground oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.animate && !_controller.isAnimating) {
-      _controller.repeat();
-    } else if (!widget.animate && _controller.isAnimating) {
-      _controller.stop();
+    if (widget.animate && _controller == null) {
+      _controller = AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 24),
+      )..repeat();
+    } else if (!widget.animate && _controller != null) {
+      _controller!.dispose();
+      _controller = null;
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -56,7 +59,8 @@ class _LiquidAuroraBackgroundState extends State<LiquidAuroraBackground>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final disableAnimations = MediaQuery.disableAnimationsOf(context);
-    final shouldAnimate = widget.animate && !disableAnimations;
+    final shouldAnimate =
+        widget.animate && !disableAnimations && _controller != null;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -66,19 +70,31 @@ class _LiquidAuroraBackgroundState extends State<LiquidAuroraBackground>
         fit: StackFit.expand,
         children: [
           RepaintBoundary(
-            child: AnimatedBuilder(
-              animation: _controller,
-              builder: (context, _) {
-                final t = shouldAnimate ? _controller.value * 2 * math.pi : 0.6;
-                return CustomPaint(
-                  painter: _AuroraMeshPainter(
-                    phase: t,
-                    isDark: isDark,
+            child: shouldAnimate
+                ? AnimatedBuilder(
+                    animation: _controller!,
+                    builder: (context, _) {
+                      final t = _controller!.value * 2 * math.pi;
+                      return CustomPaint(
+                        painter: _AuroraMeshPainter(
+                          phase: t,
+                          isDark: isDark,
+                        ),
+                        isComplex: true,
+                        willChange: true,
+                        size: Size.infinite,
+                      );
+                    },
+                  )
+                : CustomPaint(
+                    painter: _AuroraMeshPainter(
+                      phase: 0.6,
+                      isDark: isDark,
+                    ),
+                    isComplex: true,
+                    willChange: false,
+                    size: Size.infinite,
                   ),
-                  size: Size.infinite,
-                );
-              },
-            ),
           ),
           widget.child,
         ],

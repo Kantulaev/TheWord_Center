@@ -921,7 +921,8 @@ class _MobileTopBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: LiquidGlassContainer(
         borderRadius: 22,
-        blurSigma: 20,
+        blurSigma: 12,
+        enableBlur: true,
         elevation: 0.65,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Row(
@@ -1012,8 +1013,9 @@ class _MobileFloatingNavBar extends StatelessWidget {
 
     return LiquidGlassContainer(
       borderRadius: 28,
-      blurSigma: 26,
-      elevation: 1.2,
+      blurSigma: 12,
+      enableBlur: true,
+      elevation: 1.1,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,

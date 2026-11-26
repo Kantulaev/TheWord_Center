@@ -79,6 +79,11 @@ class TheWordApp extends ConsumerWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,
+      scrollBehavior: const MaterialScrollBehavior().copyWith(
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
+      ),
       builder: (context, child) {
         final media = MediaQuery.of(context);
         return MediaQuery(

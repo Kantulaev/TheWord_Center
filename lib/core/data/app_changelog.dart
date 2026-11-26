@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-const String kCurrentAppVersion = '1.6.0';
+const String kCurrentAppVersion = '1.6.1';
 
 enum ReleaseChangeType { newFeature, improved, fixed }
 
@@ -34,6 +34,25 @@ class AppReleaseNote {
 
 /// Official in-app changelog displayed to teachers & staff under "What's New".
 const List<AppReleaseNote> kAppChangelog = [
+  AppReleaseNote(
+    version: '1.6.1',
+    dateLabel: 'Nov 26, 2026',
+    title: '120 FPS Turbo Rendering & Native High-Refresh Android Support',
+    summary:
+        'Eliminated multi-layer GPU blur overhead and enabled 120Hz+ native Android display mode selection with Vulkan Impeller.',
+    highlights: [
+      ReleaseHighlight(
+        type: ReleaseChangeType.improved,
+        text:
+            '120 FPS Liquid Glass Engine: replaced 30+ continuous per-frame BackdropFilter shaders with cached GPU-friendly frosted glass layers, keeping live blur only on floating navigation chrome.',
+      ),
+      ReleaseHighlight(
+        type: ReleaseChangeType.improved,
+        text:
+            'Android High-Refresh-Rate & Impeller: automatically selects maximum screen Hz (120Hz/144Hz) in MainActivity and removes continuous idle background repaints.',
+      ),
+    ],
+  ),
   AppReleaseNote(
     version: '1.6.0',
     dateLabel: 'Nov 26, 2026',
