@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../core/models/language_type.dart';
+import '../../../core/models/lesson.dart';
 import '../../../core/models/teacher.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
@@ -58,7 +59,8 @@ class _TeachersScreenState extends ConsumerState<TeachersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final teachers = ref.watch(teachersStreamProvider).value ?? const [];
+    final teachersAsync = ref.watch(teachersStreamProvider);
+    final teachers = teachersAsync.value ?? const [];
     final lessons = ref.watch(lessonsStreamProvider).value ?? const [];
     final now = ref.watch(liveClockProvider).value ?? DateTime.now();
 
@@ -172,14 +174,47 @@ class _TeachersScreenState extends ConsumerState<TeachersScreen> {
         ),
         const SizedBox(height: 16),
 
-        if (filtered.isEmpty)
+        if (teachersAsync.isLoading && teachers.isEmpty)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: CircularProgressIndicator(),
+            ),
+          )
+        else if (teachersAsync.hasError)
+          LiquidGlassContainer(
+            borderRadius: 24,
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Unable to load teachers: ${teachersAsync.error}',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          )
+        else if (filtered.isEmpty)
           LiquidGlassContainer(
             borderRadius: 24,
             padding: const EdgeInsets.all(32),
             child: Center(
-              child: Text(
-                'No teachers match your search.',
-                style: Theme.of(context).textTheme.titleMedium,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    teachers.isEmpty
+                        ? 'No teachers loaded yet.'
+                        : 'No teachers match your search.',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  if (teachers.isEmpty) ...[
+                    const SizedBox(height: 12),
+                    LiquidPrimaryButton(
+                      label: 'Load Default Teachers & Rooms',
+                      icon: CupertinoIcons.cloud_download,
+                      onPressed: () => ref
+                          .read(dataRepositoryProvider)
+                          .seedInitialCenterDataIfNeeded(force: true),
+                    ),
+                  ],
+                ],
               ),
             ),
           )
@@ -209,7 +244,7 @@ class _TeachersScreenState extends ConsumerState<TeachersScreen> {
                         ),
                         isTeachingNow: lessons.any(
                           (l) =>
-                              l.teacherId == teacher.id &&
+                              l.involvesTeacher(teacher.id) &&
                               l.isHappeningNowAt(now),
                         ),
                         onTap: () => _openInspector(context, teacher),
@@ -225,17 +260,18 @@ class _TeachersScreenState extends ConsumerState<TeachersScreen> {
 
   double _weeklyHoursFor(
     String teacherId,
-    List<dynamic> lessons,
+    List<Lesson> lessons,
     DateTime weekStart,
     DateTime weekEnd,
   ) {
+    final endInclusive = weekEnd.subtract(const Duration(days: 1));
     var mins = 0;
-    for (final l in lessons) {
-      if (l.teacherId == teacherId &&
-          l.status != LessonStatus.canceled &&
-          !(l.startTime as DateTime).isBefore(weekStart) &&
-          (l.startTime as DateTime).isBefore(weekEnd)) {
-        mins += (l.durationMinutes as int);
+    for (final raw in lessons) {
+      final expanded = raw.expandIntoRange(weekStart, endInclusive);
+      for (final l in expanded) {
+        if (l.involvesTeacher(teacherId) && l.status != LessonStatus.canceled) {
+          mins += l.durationMinutes;
+        }
       }
     }
     return mins / 60.0;

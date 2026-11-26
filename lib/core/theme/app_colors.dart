@@ -11,6 +11,10 @@ abstract final class AppColors {
   static const Color englishSapphireBright = Color(0xFF4FA3FF);
   static const Color englishCyan = Color(0xFF06B6D4);
 
+  static const Color sharingViolet = Color(0xFF8B5CF6);
+  static const Color sharingVioletBright = Color(0xFFA78BFA);
+  static const Color sharingTeal = Color(0xFF14B8A6);
+
   static const Color bilingualIndigo = Color(0xFF6366F1);
 
   // Semantic Statuses
@@ -88,4 +92,9 @@ abstract final class AppColors {
       Theme.of(context).brightness == Brightness.dark
           ? englishSapphireBright
           : englishSapphire;
+
+  static Color sharingAccent(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? sharingVioletBright
+          : sharingViolet;
 }

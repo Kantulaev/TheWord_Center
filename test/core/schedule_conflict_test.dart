@@ -1,11 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:the_word/core/models/classroom.dart';
+import 'package:the_word/core/models/homework.dart';
 import 'package:the_word/core/models/language_type.dart';
 import 'package:the_word/core/models/lesson.dart';
+import 'package:the_word/core/models/operations_models.dart';
 import 'package:the_word/core/models/schedule_conflict.dart';
 import 'package:the_word/core/models/student.dart';
 import 'package:the_word/core/models/teacher.dart';
 import 'package:the_word/core/repositories/demo_realtime_repository.dart';
+import 'package:the_word/core/utils/csv_exporter.dart';
 
 void main() {
   group('ScheduleConflictDetector', () {
@@ -200,8 +203,8 @@ void main() {
       final initialLessons = await repo.watchLessons().first;
 
       expect(initialTeachers.length, greaterThanOrEqualTo(5));
-      expect(initialRooms.length, greaterThanOrEqualTo(4));
-      expect(initialStudents.length, greaterThanOrEqualTo(8));
+      expect(initialRooms.length, greaterThanOrEqualTo(7));
+      expect(initialStudents.length, greaterThanOrEqualTo(6));
       expect(
         initialLessons.where((l) => l.isHappeningNowAt(refTime)).length,
         greaterThanOrEqualTo(2),
@@ -215,6 +218,286 @@ void main() {
         updatedStudents.firstWhere((s) => s.id == firstStudent.id).remainingCredits,
         initialCredits + 1,
       );
+
+      // Verify seeded classrooms & teachers match requested roster
+      expect(
+        initialRooms.map((c) => c.name),
+        containsAll(['1', '2', '3', '4', '5', 'Hall', 'OldCenter']),
+      );
+      expect(
+        initialTeachers.map((t) => t.fullName),
+        containsAll(['Sharllote', 'Keith', 'Andrew', 'Sofia', 'Olga']),
+      );
+    });
+
+    test('expands Mon/Wed/Fri and Saturday Speaking Clubs accurately', () {
+      final mwf = Lesson(
+        id: 'mwf',
+        title: 'HSK 2 MWF',
+        language: CourseLanguage.chinese,
+        lessonType: LessonType.group,
+        teacherId: 't_olga',
+        classroomId: 'room_1',
+        studentIds: const [],
+        startTime: DateTime(2026, 11, 23, 18, 0), // Monday
+        endTime: DateTime(2026, 11, 23, 19, 30),
+        createdAt: DateTime(2026, 11, 23),
+        recurrenceWeekdays: const [
+          DateTime.monday,
+          DateTime.wednesday,
+          DateTime.friday,
+        ],
+      );
+
+      final occurrences = mwf.expandIntoRange(
+        DateTime(2026, 11, 23),
+        DateTime(2026, 11, 29),
+      );
+      expect(occurrences.length, 3);
+      expect(
+        occurrences.map((o) => o.startTime.weekday),
+        [DateTime.monday, DateTime.wednesday, DateTime.friday],
+      );
+    });
+
+    test('Sharing supports multiple co-teachers and detects co-teacher clashes',
+        () {
+      final day = DateTime(2026, 11, 26);
+      final t1 = Teacher(
+        id: 't1',
+        fullName: 'Sharllote',
+        avatarColorHex: 'D93848',
+        languages: TeachingLanguageScope.english,
+        specializations: const [],
+        createdAt: day,
+      );
+      final t2 = Teacher(
+        id: 't2',
+        fullName: 'Keith',
+        avatarColorHex: '1E66F5',
+        languages: TeachingLanguageScope.english,
+        specializations: const [],
+        createdAt: day,
+      );
+      final hall = Classroom(
+        id: 'hall',
+        name: 'Hall',
+        capacity: 20,
+        equipmentTags: const [],
+        createdAt: day,
+      );
+      final altRoom = Classroom(
+        id: 'r2',
+        name: '2',
+        capacity: 6,
+        equipmentTags: const [],
+        createdAt: day,
+      );
+
+      final sharing = Lesson(
+        id: 'sh1',
+        title: 'Coffee Sharing',
+        language: CourseLanguage.sharing,
+        lessonType: LessonType.group,
+        teacherId: 't1',
+        coTeacherIds: const ['t2'],
+        classroomId: 'hall',
+        studentIds: const ['s1', 's2'],
+        startTime: DateTime(2026, 11, 26, 19, 0),
+        endTime: DateTime(2026, 11, 26, 20, 0),
+        createdAt: day,
+      );
+
+      final clashWithCoTeacher = Lesson(
+        id: 'l2',
+        title: '1-on-1 IELTS',
+        language: CourseLanguage.english,
+        lessonType: LessonType.oneOnOne,
+        teacherId: 't2',
+        classroomId: 'r2',
+        studentIds: const [],
+        startTime: DateTime(2026, 11, 26, 19, 15),
+        endTime: DateTime(2026, 11, 26, 20, 15),
+        createdAt: day,
+      );
+
+      final result = ScheduleConflictDetector.validate(
+        candidate: clashWithCoTeacher,
+        existingLessons: [sharing],
+        teachersById: {'t1': t1, 't2': t2},
+        classroomsById: {'hall': hall, 'r2': altRoom},
+        studentsById: const {},
+      );
+
+      expect(result.hasBlockingConflicts, isTrue);
+      expect(
+        result.blockingConflicts.first.resourceType,
+        ConflictResourceType.teacher,
+      );
+    });
+  });
+
+  group('Operations suite & CSV exporter', () {
+    test('CsvExporter quotes commas, quotes, and newlines properly', () {
+      final csv = CsvExporter.encode([
+        ['Student', 'Notes'],
+        ['Olivia, "Oli"', 'Line1\nLine2'],
+      ]);
+      expect(
+        csv,
+        'Student,Notes\r\n"Olivia, ""Oli""","Line1\nLine2"',
+      );
+    });
+
+    test('markAttendance deducts 1 credit on Present and refunds on Excused',
+        () async {
+      final repo = DemoRealtimeRepository(
+        referenceNow: DateTime(2026, 11, 25, 12, 30),
+      );
+      addTearDown(repo.dispose);
+
+      final students = await repo.watchStudents().first;
+      final lessons = await repo.watchLessons().first;
+      final student = students.first;
+      final lesson = lessons.first;
+      final initialCredits = student.remainingCredits;
+
+      await repo.markAttendance(
+        lesson: lesson,
+        dateKey: '2026-11-25',
+        studentId: student.id,
+        studentName: student.fullName,
+        status: AttendanceStatus.present,
+      );
+
+      final afterPresent = (await repo.watchStudents().first)
+          .firstWhere((s) => s.id == student.id);
+      expect(afterPresent.remainingCredits, initialCredits - 1);
+
+      // Re-marking Present again should not double-deduct
+      await repo.markAttendance(
+        lesson: lesson,
+        dateKey: '2026-11-25',
+        studentId: student.id,
+        studentName: student.fullName,
+        status: AttendanceStatus.present,
+      );
+      final afterSecondPresent = (await repo.watchStudents().first)
+          .firstWhere((s) => s.id == student.id);
+      expect(afterSecondPresent.remainingCredits, initialCredits - 1);
+
+      // Changing to Excused refunds 1 credit
+      await repo.markAttendance(
+        lesson: lesson,
+        dateKey: '2026-11-25',
+        studentId: student.id,
+        studentName: student.fullName,
+        status: AttendanceStatus.excused,
+      );
+      final afterExcused = (await repo.watchStudents().first)
+          .firstWhere((s) => s.id == student.id);
+      expect(afterExcused.remainingCredits, initialCredits);
+    });
+
+    test('recordPayment increments credits and persists payment history',
+        () async {
+      final repo = DemoRealtimeRepository(
+        referenceNow: DateTime(2026, 11, 25, 12, 30),
+      );
+      addTearDown(repo.dispose);
+
+      final student = (await repo.watchStudents().first).first;
+      final beforeCredits = student.remainingCredits;
+
+      await repo.recordPayment(
+        PaymentRecord(
+          id: 'pay-test-1',
+          studentId: student.id,
+          studentName: student.fullName,
+          amount: 120,
+          lessonsPurchased: 12,
+          method: PaymentMethod.transfer,
+          paidAt: DateTime(2026, 11, 26),
+        ),
+      );
+
+      final afterCredits = (await repo.watchStudents().first)
+          .firstWhere((s) => s.id == student.id)
+          .remainingCredits;
+      final payments = await repo.watchPayments().first;
+
+      expect(afterCredits, beforeCredits + 12);
+      expect(payments.any((p) => p.id == 'pay-test-1'), isTrue);
+    });
+
+    test('homework submission, review feedback, trial lead & reschedule round-trip',
+        () async {
+      final repo = DemoRealtimeRepository(
+        referenceNow: DateTime(2026, 11, 25, 12, 30),
+      );
+      addTearDown(repo.dispose);
+
+      final hw = (await repo.watchHomeworks().first).first;
+      await repo.submitHomeworkResponse(
+        homeworkId: hw.id,
+        submission: HomeworkSubmission(
+          studentUid: 'u1',
+          studentName: 'Alex Student',
+          studentEmail: 'student@gmail.com',
+          answerOrLink: 'https://example.com/audio.mp3',
+          submittedAt: DateTime(2026, 11, 26, 10, 0),
+        ),
+      );
+      await repo.reviewHomeworkSubmission(
+        homeworkId: hw.id,
+        studentUid: 'u1',
+        feedback: 'Nice tone clarity!',
+        reviewed: true,
+      );
+
+      final updatedHw = (await repo.watchHomeworks().first)
+          .firstWhere((h) => h.id == hw.id);
+      final sub = updatedHw.submissionFor('u1');
+      expect(sub, isNotNull);
+      expect(sub!.reviewed, isTrue);
+      expect(sub.teacherFeedback, 'Nice tone clarity!');
+
+      final lead = TrialLead(
+        id: 'lead-1',
+        fullName: 'Timur Bekov',
+        phone: '+996555000111',
+        targetLanguage: CourseLanguage.chinese,
+        preferredLevel: 'HSK 1',
+        stage: LeadStage.trialScheduled,
+        createdAt: DateTime(2026, 11, 26),
+      );
+      final decodedLead = TrialLead.fromMap(lead.toMap());
+      expect(decodedLead.fullName, 'Timur Bekov');
+      expect(decodedLead.stage, LeadStage.trialScheduled);
+
+      await repo.submitRescheduleRequest(
+        RescheduleRequest(
+          id: 'req-1',
+          studentUid: 'u1',
+          studentName: 'Alex Student',
+          studentEmail: 'student@gmail.com',
+          groupId: 'g1',
+          groupName: 'HSK 1 — Foundations',
+          requestedDate: DateTime(2026, 11, 28),
+          preferredSlot: '6:00 PM',
+          reason: 'Exam conflict',
+          createdAt: DateTime(2026, 11, 26),
+        ),
+      );
+      await repo.resolveRescheduleRequest(
+        requestId: 'req-1',
+        status: RequestStatus.approved,
+        staffNote: 'Moved to Saturday',
+      );
+      final reqs = await repo.watchRescheduleRequests().first;
+      final resolved = reqs.firstWhere((r) => r.id == 'req-1');
+      expect(resolved.status, RequestStatus.approved);
+      expect(resolved.staffNote, 'Moved to Saturday');
     });
   });
 }

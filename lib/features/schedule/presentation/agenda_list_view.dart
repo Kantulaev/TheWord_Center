@@ -15,10 +15,12 @@ class AgendaListView extends ConsumerWidget {
   const AgendaListView({
     super.key,
     required this.lessons,
+    required this.anchorDate,
     required this.onSelectLesson,
   });
 
   final List<Lesson> lessons;
+  final DateTime anchorDate;
   final ValueChanged<Lesson> onSelectLesson;
 
   @override
@@ -28,7 +30,14 @@ class AgendaListView extends ConsumerWidget {
     final classrooms = ref.watch(classroomsMapProvider);
     final students = ref.watch(studentsMapProvider);
 
-    if (lessons.isEmpty) {
+    final startDay = DateTime(anchorDate.year, anchorDate.month, anchorDate.day);
+    final expandedLessons = Lesson.expandAll(
+      lessons,
+      startDay,
+      startDay.add(const Duration(days: 21)),
+    );
+
+    if (expandedLessons.isEmpty) {
       return LiquidGlassContainer(
         borderRadius: 24,
         padding: const EdgeInsets.all(32),
@@ -58,12 +67,13 @@ class AgendaListView extends ConsumerWidget {
       );
     }
 
-    final liveLessons =
-        lessons.where((l) => l.isHappeningNowAt(now)).toList(growable: false);
+    final liveLessons = expandedLessons
+        .where((l) => l.isHappeningNowAt(now))
+        .toList(growable: false);
 
     // Group all matching lessons by calendar day
     final grouped = <DateTime, List<Lesson>>{};
-    for (final lesson in lessons) {
+    for (final lesson in expandedLessons) {
       final dayKey = DateTime(
         lesson.startTime.year,
         lesson.startTime.month,
@@ -96,8 +106,7 @@ class AgendaListView extends ConsumerWidget {
             _AgendaLessonCard(
               lesson: lesson,
               now: now,
-              teacherName:
-                  teachers[lesson.teacherId]?.fullName ?? 'Unassigned',
+              teacherName: _teachersLabel(lesson, teachers),
               roomName: classrooms[lesson.classroomId]?.name ?? 'Unassigned',
               studentNames: lesson.studentIds
                   .map((id) => students[id]?.fullName ?? 'Student')
@@ -126,8 +135,7 @@ class AgendaListView extends ConsumerWidget {
             _AgendaLessonCard(
               lesson: lesson,
               now: now,
-              teacherName:
-                  teachers[lesson.teacherId]?.fullName ?? 'Unassigned',
+              teacherName: _teachersLabel(lesson, teachers),
               roomName: classrooms[lesson.classroomId]?.name ?? 'Unassigned',
               studentNames: lesson.studentIds
                   .map((id) => students[id]?.fullName ?? 'Student')
@@ -139,6 +147,14 @@ class AgendaListView extends ConsumerWidget {
         ],
       ],
     );
+  }
+
+  String _teachersLabel(Lesson lesson, Map<String, dynamic> teachers) {
+    final names = lesson.allTeacherIds
+        .map((id) => teachers[id]?.fullName as String?)
+        .whereType<String>()
+        .toList();
+    return names.isEmpty ? 'Unassigned' : names.join(', ');
   }
 
   String _dayHeading(DateTime day, DateTime now) {

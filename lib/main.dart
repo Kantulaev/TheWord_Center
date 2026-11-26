@@ -3,29 +3,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'core/providers/app_providers.dart';
+import 'core/repositories/auth_repository.dart';
 import 'core/repositories/data_repository.dart';
 import 'core/repositories/demo_realtime_repository.dart';
 import 'core/repositories/firestore_repository.dart';
 import 'core/theme/app_theme.dart';
+import 'features/auth/presentation/auth_gate.dart';
 import 'firebase_options.dart';
-import 'shared/widgets/adaptive_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final repository = await _createDataRepository();
+  final env = await _initializeServices();
 
   runApp(
     ProviderScope(
       overrides: [
-        dataRepositoryProvider.overrideWithValue(repository),
+        dataRepositoryProvider.overrideWithValue(env.dataRepository),
+        authRepositoryProvider.overrideWithValue(env.authRepository),
       ],
       child: const TheWordApp(),
     ),
   );
 }
 
-Future<DataRepository> _createDataRepository() async {
+Future<({DataRepository dataRepository, AuthRepository authRepository})>
+    _initializeServices() async {
   try {
     final options = DefaultFirebaseOptions.currentPlatform;
     final unconfigured = options.apiKey.isEmpty ||
@@ -33,14 +36,23 @@ Future<DataRepository> _createDataRepository() async {
         options.projectId.isEmpty ||
         options.projectId.startsWith('YOUR_');
     if (unconfigured) {
-      return DemoRealtimeRepository();
+      return (
+        dataRepository: DemoRealtimeRepository(),
+        authRepository: DemoAuthRepository(),
+      );
     }
     await Firebase.initializeApp(options: options);
-    return FirestoreRepository();
+    return (
+      dataRepository: FirestoreRepository(),
+      authRepository: FirebaseAuthRepository(),
+    );
   } catch (_) {
     // Automatically falls back to Demo Mode when firebase_options.dart is
     // unconfigured or Firebase initialization is unavailable.
-    return DemoRealtimeRepository();
+    return (
+      dataRepository: DemoRealtimeRepository(),
+      authRepository: DemoAuthRepository(),
+    );
   }
 }
 
@@ -57,7 +69,7 @@ class TheWordApp extends ConsumerWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,
-      home: const AdaptiveShell(),
+      home: const AuthGate(),
     );
   }
 }

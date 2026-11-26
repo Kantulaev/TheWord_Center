@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../core/models/language_type.dart';
+import '../../../core/models/lesson.dart';
 import '../../../core/models/teacher.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
@@ -48,15 +49,13 @@ class TeacherDetailPanel extends ConsumerWidget {
 
     final weekStart = DateTime(now.year, now.month, now.day)
         .subtract(Duration(days: now.weekday - 1));
-    final weekEnd = weekStart.add(const Duration(days: 7));
+    final weekEnd = weekStart.add(const Duration(days: 6));
 
-    final weeklyLessons = lessons
+    final weeklyLessons = Lesson.expandAll(lessons, weekStart, weekEnd)
         .where(
           (l) =>
-              l.teacherId == teacher.id &&
-              l.status != LessonStatus.canceled &&
-              !l.startTime.isBefore(weekStart) &&
-              l.startTime.isBefore(weekEnd),
+              l.involvesTeacher(teacher.id) &&
+              l.status != LessonStatus.canceled,
         )
         .toList()
       ..sort((a, b) => a.startTime.compareTo(b.startTime));

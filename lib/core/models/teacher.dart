@@ -16,6 +16,8 @@ class Teacher {
     this.email = '',
     this.isActive = true,
     this.notes = '',
+    this.hourlyRate = 25.0,
+    this.clubRate = 35.0,
     required this.createdAt,
   });
 
@@ -39,6 +41,8 @@ class Teacher {
   final String email;
   final bool isActive;
   final String notes;
+  final double hourlyRate;
+  final double clubRate;
   final DateTime createdAt;
 
   String get initials {
@@ -64,6 +68,8 @@ class Teacher {
     String? email,
     bool? isActive,
     String? notes,
+    double? hourlyRate,
+    double? clubRate,
     DateTime? createdAt,
   }) {
     return Teacher(
@@ -76,6 +82,8 @@ class Teacher {
       email: email ?? this.email,
       isActive: isActive ?? this.isActive,
       notes: notes ?? this.notes,
+      hourlyRate: hourlyRate ?? this.hourlyRate,
+      clubRate: clubRate ?? this.clubRate,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -91,6 +99,8 @@ class Teacher {
       'email': email,
       'isActive': isActive,
       'notes': notes,
+      'hourlyRate': hourlyRate,
+      'clubRate': clubRate,
       'createdAt': useFirestoreTimestamp
           ? Timestamp.fromDate(createdAt)
           : createdAt.toIso8601String(),
@@ -113,6 +123,8 @@ class Teacher {
       email: map['email'] as String? ?? '',
       isActive: map['isActive'] as bool? ?? true,
       notes: map['notes'] as String? ?? '',
+      hourlyRate: (map['hourlyRate'] as num?)?.toDouble() ?? 25.0,
+      clubRate: (map['clubRate'] as num?)?.toDouble() ?? 35.0,
       createdAt: parseFlexibleDateTime(map['createdAt']),
     );
   }
@@ -131,6 +143,8 @@ class Teacher {
           email == other.email &&
           isActive == other.isActive &&
           notes == other.notes &&
+          hourlyRate == other.hourlyRate &&
+          clubRate == other.clubRate &&
           createdAt == other.createdAt;
 
   @override
@@ -144,6 +158,8 @@ class Teacher {
         email,
         isActive,
         notes,
+        hourlyRate,
+        clubRate,
         createdAt,
       );
 }

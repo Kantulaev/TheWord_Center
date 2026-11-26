@@ -3,34 +3,40 @@ import 'package:material_ui/material_ui.dart';
 
 import '../theme/app_colors.dart';
 
-/// Primary course languages offered by "The Word".
+/// Course and session categories offered by "The Word".
 enum CourseLanguage {
   chinese,
-  english;
+  english,
+  sharing;
 
   String get label => switch (this) {
         CourseLanguage.chinese => 'Chinese',
         CourseLanguage.english => 'English',
+        CourseLanguage.sharing => 'Sharing',
       };
 
   String get nativeSublabel => switch (this) {
         CourseLanguage.chinese => 'Mandarin',
         CourseLanguage.english => 'English',
+        CourseLanguage.sharing => 'Open Chat',
       };
 
   String get code => switch (this) {
         CourseLanguage.chinese => 'ZH',
         CourseLanguage.english => 'EN',
+        CourseLanguage.sharing => 'SH',
       };
 
   Color accentColor(BuildContext context) => switch (this) {
         CourseLanguage.chinese => AppColors.chineseAccent(context),
         CourseLanguage.english => AppColors.englishAccent(context),
+        CourseLanguage.sharing => AppColors.sharingAccent(context),
       };
 
   Color get secondaryAccent => switch (this) {
         CourseLanguage.chinese => AppColors.chineseCoralGold,
         CourseLanguage.english => AppColors.englishCyan,
+        CourseLanguage.sharing => AppColors.sharingTeal,
       };
 
   static CourseLanguage fromString(String? value) {
@@ -54,8 +60,12 @@ enum TeachingLanguageScope {
       };
 
   bool supports(CourseLanguage language) => switch (this) {
-        TeachingLanguageScope.chinese => language == CourseLanguage.chinese,
-        TeachingLanguageScope.english => language == CourseLanguage.english,
+        TeachingLanguageScope.chinese =>
+          language == CourseLanguage.chinese ||
+              language == CourseLanguage.sharing,
+        TeachingLanguageScope.english =>
+          language == CourseLanguage.english ||
+              language == CourseLanguage.sharing,
         TeachingLanguageScope.both => true,
       };
 
@@ -148,11 +158,13 @@ abstract final class ProficiencyLevels {
   static List<String> forLanguage(CourseLanguage language) => switch (language) {
         CourseLanguage.chinese => chinese,
         CourseLanguage.english => english,
+        CourseLanguage.sharing => const ['All Levels'],
       };
 
   static String defaultFor(CourseLanguage language) => switch (language) {
         CourseLanguage.chinese => 'HSK 1',
         CourseLanguage.english => 'A1',
+        CourseLanguage.sharing => 'All Levels',
       };
 }
 

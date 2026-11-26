@@ -42,7 +42,8 @@ class ClassroomsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final classrooms = ref.watch(classroomsStreamProvider).value ?? const [];
+    final classroomsAsync = ref.watch(classroomsStreamProvider);
+    final classrooms = classroomsAsync.value ?? const [];
     final occupancyMap = ref.watch(classroomOccupancyProvider);
 
     final freeCount =
@@ -91,14 +92,43 @@ class ClassroomsScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 18),
 
-        if (classrooms.isEmpty)
+        if (classroomsAsync.isLoading && classrooms.isEmpty)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: CircularProgressIndicator(),
+            ),
+          )
+        else if (classroomsAsync.hasError)
+          LiquidGlassContainer(
+            borderRadius: 24,
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Unable to load classrooms: ${classroomsAsync.error}',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          )
+        else if (classrooms.isEmpty)
           LiquidGlassContainer(
             borderRadius: 24,
             padding: const EdgeInsets.all(32),
             child: Center(
-              child: Text(
-                'No classrooms configured yet. Add your first teaching room.',
-                style: Theme.of(context).textTheme.titleMedium,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'No classrooms loaded yet.',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  LiquidPrimaryButton(
+                    label: 'Load Default Rooms & Teachers',
+                    icon: CupertinoIcons.cloud_download,
+                    onPressed: () => ref
+                        .read(dataRepositoryProvider)
+                        .seedInitialCenterDataIfNeeded(force: true),
+                  ),
+                ],
               ),
             ),
           )

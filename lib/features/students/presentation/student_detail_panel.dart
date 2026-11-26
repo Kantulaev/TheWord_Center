@@ -2,11 +2,14 @@ import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/models/language_type.dart';
+import '../../../core/models/operations_models.dart';
 import '../../../core/models/student.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/reminder_helper.dart';
 import '../../../shared/widgets/confirm_delete_dialog.dart';
 import '../../../shared/widgets/entity_avatar.dart';
 import '../../../shared/widgets/language_badge.dart';
@@ -255,8 +258,171 @@ class StudentDetailPanel extends ConsumerWidget {
                     ],
                   ),
                 ],
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: () => ReminderHelper.openWhatsApp(
+                        context,
+                        phone: student.phone,
+                        message:
+                            'Hello ${student.fullName}! Reminder from The Word Center: you currently have ${student.remainingCredits} lesson credit(s) left in ${student.targetLanguage.label} (${student.proficiencyLevel}).',
+                      ),
+                      icon: const Icon(
+                        CupertinoIcons.chat_bubble_fill,
+                        size: 14,
+                      ),
+                      label: const Text('WhatsApp'),
+                    ),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: () => ReminderHelper.openTelegram(
+                        context,
+                        message:
+                            'Hello ${student.fullName}! Reminder from The Word Center: you currently have ${student.remainingCredits} lesson credit(s) left in ${student.targetLanguage.label} (${student.proficiencyLevel}).',
+                      ),
+                      icon: const Icon(
+                        CupertinoIcons.paperplane_fill,
+                        size: 14,
+                      ),
+                      label: const Text('Telegram'),
+                    ),
+                  ],
+                ),
               ],
             ),
+          ),
+
+          const SizedBox(height: 14),
+          Builder(
+            builder: (context) {
+              final topics = Student.standardTopicsFor(student.targetLanguage);
+              final completedSet = student.completedTopics.toSet();
+              return LiquidGlassContainer(
+                borderRadius: 20,
+                blurSigma: 12,
+                elevation: 0.3,
+                tintColor: student.readyForNextLevel
+                    ? AppColors.liveEmerald
+                    : accent,
+                tintStrength: 0.05,
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          CupertinoIcons.chart_bar_fill,
+                          size: 16,
+                          color: accent,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Level Progress (${student.proficiencyLevel})',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                        ),
+                        Text(
+                          '${student.levelProgressPercent}%',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(
+                                color: accent,
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: (student.levelProgressPercent.clamp(0, 100)) /
+                            100.0,
+                        minHeight: 8,
+                        backgroundColor: accent.withValues(alpha: 0.14),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          student.readyForNextLevel
+                              ? AppColors.liveEmerald
+                              : accent,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final topic in topics)
+                          FilterChip(
+                            label: Text(
+                              topic,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            selected: completedSet.contains(topic),
+                            onSelected: (checked) async {
+                              final nextTopics = {...completedSet};
+                              if (checked) {
+                                nextTopics.add(topic);
+                              } else {
+                                nextTopics.remove(topic);
+                              }
+                              final nextPct = topics.isEmpty
+                                  ? 0
+                                  : ((nextTopics.length / topics.length) * 100)
+                                      .round();
+                              final repo = ref.read(dataRepositoryProvider);
+                              await repo.upsertStudent(
+                                student.copyWith(
+                                  completedTopics: nextTopics.toList(),
+                                  levelProgressPercent: nextPct,
+                                ),
+                              );
+                              final actor = ref
+                                      .read(authStateProvider)
+                                      .value
+                                      ?.email ??
+                                  'staff';
+                              await repo.logActivity(
+                                ActivityLogEntry(
+                                  id: const Uuid().v4(),
+                                  actorEmail: actor,
+                                  category: 'Student',
+                                  summary:
+                                      'Updated ${student.fullName} progress to $nextPct%',
+                                  createdAt: DateTime.now(),
+                                ),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      value: student.readyForNextLevel,
+                      title: const Text('Ready for Next Level'),
+                      onChanged: (ready) async {
+                        await ref.read(dataRepositoryProvider).upsertStudent(
+                              student.copyWith(readyForNextLevel: ready),
+                            );
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
 
           if (student.notes.trim().isNotEmpty) ...[

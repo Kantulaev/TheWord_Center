@@ -69,21 +69,20 @@ flutterfire configure
 
 When prompted to overwrite `lib/firebase_options.dart`, confirm **Yes**. Restart the app (`flutter run -d chrome`) and the bottom-left status indicator will switch automatically from **Demo Mode (Live Sync)** to **Cloud Sync (Firestore)**.
 
-### 3. Recommended Firestore Security Rules
-For internal staff usage (or while prototyping):
+### 3. Closed Staff Authentication & Security Rules
+To ensure only authorized center staff can sign in and access data:
 
-```js
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{collection}/{docId} {
-      allow read, write: if collection in ['lessons', 'teachers', 'classrooms', 'students'];
-    }
-  }
-}
+1. In Firebase Console: **Build → Authentication → Get started → Email/Password → Enable**.
+2. Go to **Authentication → Settings → User actions** and uncheck **Enable create (sign-up)** so public visitors cannot self-register.
+3. Add staff accounts manually in **Authentication → Users → Add user**.
+4. Deploy the included [firestore.rules](firestore.rules) and Hosting configuration:
+
+```powershell
+flutter build web --release
+firebase.cmd deploy --only firestore:rules,hosting
 ```
 
-> **Production tip:** Before opening the web URL publicly, add Firebase Authentication (`firebase_auth`) and restrict `allow read, write: if request.auth != null;`.
+Your hosted app will be live at `https://theword-6f685.web.app`.
 
 ---
 

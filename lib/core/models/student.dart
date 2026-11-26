@@ -17,8 +17,30 @@ class Student {
     this.phone = '',
     this.email = '',
     this.notes = '',
+    this.levelProgressPercent = 0,
+    this.completedTopics = const [],
+    this.readyForNextLevel = false,
     required this.createdAt,
   });
+
+  static List<String> standardTopicsFor(CourseLanguage lang) => switch (lang) {
+        CourseLanguage.chinese => const [
+            'Pinyin & 4 Tones',
+            'Core Vocabulary',
+            'Character Writing',
+            'Listening Comprehension',
+            'Dialogue Fluency',
+            'Mock HSK Exam Passed',
+          ],
+        _ => const [
+            'Core Grammar',
+            'Vocabulary Building',
+            'Listening & Audio',
+            'Speaking Fluency',
+            'Reading & Writing',
+            'Level Assessment Passed',
+          ],
+      };
 
   final String id;
   final String fullName;
@@ -30,6 +52,9 @@ class Student {
   final String phone;
   final String email;
   final String notes;
+  final int levelProgressPercent;
+  final List<String> completedTopics;
+  final bool readyForNextLevel;
   final DateTime createdAt;
 
   String get initials {
@@ -57,6 +82,9 @@ class Student {
     String? phone,
     String? email,
     String? notes,
+    int? levelProgressPercent,
+    List<String>? completedTopics,
+    bool? readyForNextLevel,
     DateTime? createdAt,
   }) {
     return Student(
@@ -72,6 +100,9 @@ class Student {
       phone: phone ?? this.phone,
       email: email ?? this.email,
       notes: notes ?? this.notes,
+      levelProgressPercent: levelProgressPercent ?? this.levelProgressPercent,
+      completedTopics: completedTopics ?? this.completedTopics,
+      readyForNextLevel: readyForNextLevel ?? this.readyForNextLevel,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -88,6 +119,9 @@ class Student {
       'phone': phone,
       'email': email,
       'notes': notes,
+      'levelProgressPercent': levelProgressPercent,
+      'completedTopics': completedTopics,
+      'readyForNextLevel': readyForNextLevel,
       'createdAt': useFirestoreTimestamp
           ? Timestamp.fromDate(createdAt)
           : createdAt.toIso8601String(),
@@ -96,6 +130,10 @@ class Student {
 
   factory Student.fromMap(Map<String, dynamic> map, {String? documentId}) {
     final lang = CourseLanguage.fromString(map['targetLanguage'] as String?);
+    final rawTopics = map['completedTopics'];
+    final topics = rawTopics is Iterable
+        ? rawTopics.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+        : <String>[];
     return Student(
       id: documentId ?? (map['id'] as String? ?? ''),
       fullName: map['fullName'] as String? ?? 'Unnamed Student',
@@ -108,6 +146,10 @@ class Student {
       phone: map['phone'] as String? ?? '',
       email: map['email'] as String? ?? '',
       notes: map['notes'] as String? ?? '',
+      levelProgressPercent:
+          ((map['levelProgressPercent'] as num?)?.toInt() ?? 0).clamp(0, 100),
+      completedTopics: topics,
+      readyForNextLevel: map['readyForNextLevel'] as bool? ?? false,
       createdAt: parseFlexibleDateTime(map['createdAt']),
     );
   }
@@ -127,6 +169,9 @@ class Student {
           phone == other.phone &&
           email == other.email &&
           notes == other.notes &&
+          levelProgressPercent == other.levelProgressPercent &&
+          listEquals(completedTopics, other.completedTopics) &&
+          readyForNextLevel == other.readyForNextLevel &&
           createdAt == other.createdAt;
 
   @override
@@ -141,6 +186,9 @@ class Student {
         phone,
         email,
         notes,
+        levelProgressPercent,
+        Object.hashAll(completedTopics),
+        readyForNextLevel,
         createdAt,
       );
 }

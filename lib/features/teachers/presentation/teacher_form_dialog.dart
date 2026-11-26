@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/models/language_type.dart';
+import '../../../core/models/operations_models.dart';
 import '../../../core/models/teacher.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
@@ -36,6 +37,8 @@ class _TeacherFormDialogState extends ConsumerState<TeacherFormDialog> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _phoneCtrl;
   late final TextEditingController _emailCtrl;
+  late final TextEditingController _hourlyRateCtrl;
+  late final TextEditingController _clubRateCtrl;
   late final TextEditingController _notesCtrl;
   late final TextEditingController _customTagCtrl;
 
@@ -52,6 +55,12 @@ class _TeacherFormDialogState extends ConsumerState<TeacherFormDialog> {
     _nameCtrl = TextEditingController(text: e?.fullName ?? '');
     _phoneCtrl = TextEditingController(text: e?.phone ?? '');
     _emailCtrl = TextEditingController(text: e?.email ?? '');
+    _hourlyRateCtrl = TextEditingController(
+      text: (e?.hourlyRate ?? 25.0).toStringAsFixed(0),
+    );
+    _clubRateCtrl = TextEditingController(
+      text: (e?.clubRate ?? 35.0).toStringAsFixed(0),
+    );
     _notesCtrl = TextEditingController(text: e?.notes ?? '');
     _customTagCtrl = TextEditingController();
     _avatarHex = e?.avatarColorHex ?? AppColors.avatarColorHexes.first;
@@ -65,6 +74,8 @@ class _TeacherFormDialogState extends ConsumerState<TeacherFormDialog> {
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _emailCtrl.dispose();
+    _hourlyRateCtrl.dispose();
+    _clubRateCtrl.dispose();
     _notesCtrl.dispose();
     _customTagCtrl.dispose();
     super.dispose();
@@ -276,6 +287,45 @@ class _TeacherFormDialogState extends ConsumerState<TeacherFormDialog> {
                     ),
                     const SizedBox(height: 12),
 
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _hourlyRateCtrl,
+                            keyboardType:
+                                const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(
+                              labelText: 'Class Hourly Rate (\$)',
+                              hintText: '25',
+                            ),
+                            validator: (v) {
+                              final val = double.tryParse(v?.trim() ?? '');
+                              if (val == null || val < 0) return 'Valid rate';
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _clubRateCtrl,
+                            keyboardType:
+                                const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(
+                              labelText: 'Club Session Rate (\$)',
+                              hintText: '35',
+                            ),
+                            validator: (v) {
+                              final val = double.tryParse(v?.trim() ?? '');
+                              if (val == null || val < 0) return 'Valid rate';
+                              return null;
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
                     SwitchListTile.adaptive(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
@@ -337,12 +387,30 @@ class _TeacherFormDialogState extends ConsumerState<TeacherFormDialog> {
                             email: _emailCtrl.text.trim(),
                             isActive: _isActive,
                             notes: _notesCtrl.text.trim(),
+                            hourlyRate:
+                                double.tryParse(_hourlyRateCtrl.text.trim()) ??
+                                    25.0,
+                            clubRate:
+                                double.tryParse(_clubRateCtrl.text.trim()) ??
+                                    35.0,
                             createdAt:
                                 widget.existing?.createdAt ?? DateTime.now(),
                           );
-                          await ref
-                              .read(dataRepositoryProvider)
-                              .upsertTeacher(teacher);
+                          final repo = ref.read(dataRepositoryProvider);
+                          await repo.upsertTeacher(teacher);
+                          final actor =
+                              ref.read(authStateProvider).value?.email ??
+                                  'staff';
+                          await repo.logActivity(
+                            ActivityLogEntry(
+                              id: const Uuid().v4(),
+                              actorEmail: actor,
+                              category: 'Teacher',
+                              summary:
+                                  '${widget.existing == null ? "Added" : "Updated"} teacher ${teacher.fullName} (\$${teacher.hourlyRate.toStringAsFixed(0)}/h)',
+                              createdAt: DateTime.now(),
+                            ),
+                          );
                           if (context.mounted) {
                             Navigator.of(context).pop();
                           }

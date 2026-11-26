@@ -4,18 +4,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../models/classroom.dart';
+import '../models/homework.dart';
 import '../models/language_type.dart';
 import '../models/lesson.dart';
+import '../models/operations_models.dart';
 import '../models/student.dart';
+import '../models/study_group.dart';
 import '../models/teacher.dart';
+import '../repositories/auth_repository.dart';
 import '../repositories/data_repository.dart';
 import '../repositories/demo_realtime_repository.dart';
 
 enum AppTab {
   schedule('Schedule'),
+  groups('Groups'),
   teachers('Teachers'),
   classrooms('Classrooms'),
-  students('Students');
+  students('Students'),
+  finance('Finance'),
+  leads('Leads'),
+  updates('Updates');
 
   const AppTab(this.label);
   final String label;
@@ -81,6 +89,8 @@ class ScheduleFilterState {
 class InspectorTarget {
   const InspectorTarget.lesson(this.id)
       : kind = InspectorKind.lesson;
+  const InspectorTarget.group(this.id)
+      : kind = InspectorKind.group;
   const InspectorTarget.teacher(this.id)
       : kind = InspectorKind.teacher;
   const InspectorTarget.classroom(this.id)
@@ -103,7 +113,7 @@ class InspectorTarget {
   int get hashCode => Object.hash(kind, id);
 }
 
-enum InspectorKind { lesson, teacher, classroom, student }
+enum InspectorKind { lesson, group, teacher, classroom, student }
 
 @immutable
 class TodayPulseStats {
@@ -147,6 +157,18 @@ final dataRepositoryProvider = Provider<DataRepository>((ref) {
   final repo = DemoRealtimeRepository();
   ref.onDispose(repo.dispose);
   return repo;
+});
+
+final authRepositoryProvider = Provider<AuthRepository>((ref) {
+  return DemoAuthRepository();
+});
+
+final authStateProvider = StreamProvider<AuthUser?>((ref) {
+  return ref.watch(authRepositoryProvider).watchAuthState();
+});
+
+final allowedEmailsProvider = StreamProvider<List<AllowedStaffEmail>>((ref) {
+  return ref.watch(authRepositoryProvider).watchAllowedEmails();
 });
 
 final enableAmbientAnimationsProvider = Provider<bool>((ref) => true);
@@ -299,6 +321,48 @@ final studentsStreamProvider = StreamProvider<List<Student>>((ref) {
   return ref.watch(dataRepositoryProvider).watchStudents();
 });
 
+final groupsStreamProvider = StreamProvider<List<StudyGroup>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchGroups();
+});
+
+final homeworksStreamProvider =
+    StreamProvider<List<HomeworkAssignment>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchHomeworks();
+});
+
+final studentPortalProfileProvider =
+    StreamProvider<StudentPortalProfile?>((ref) {
+  final user = ref.watch(authStateProvider).value;
+  if (user == null) return Stream.value(null);
+  return ref.watch(dataRepositoryProvider).watchStudentPortalProfile(
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+      );
+});
+
+final attendanceStreamProvider = StreamProvider<List<AttendanceRecord>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchAttendance();
+});
+
+final paymentsStreamProvider = StreamProvider<List<PaymentRecord>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchPayments();
+});
+
+final trialLeadsStreamProvider = StreamProvider<List<TrialLead>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchTrialLeads();
+});
+
+final rescheduleRequestsStreamProvider =
+    StreamProvider<List<RescheduleRequest>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchRescheduleRequests();
+});
+
+final activityLogsStreamProvider =
+    StreamProvider<List<ActivityLogEntry>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchActivityLogs();
+});
+
 // ---------------------------------------------------------------------------
 // Derived Lookup Maps & Live Metrics
 // ---------------------------------------------------------------------------
@@ -330,7 +394,8 @@ final filteredLessonsProvider = Provider<List<Lesson>>((ref) {
     if (filter.language != null && lesson.language != filter.language) {
       return false;
     }
-    if (filter.teacherId != null && lesson.teacherId != filter.teacherId) {
+    if (filter.teacherId != null &&
+        !lesson.involvesTeacher(filter.teacherId!)) {
       return false;
     }
     if (filter.classroomId != null &&
@@ -338,14 +403,15 @@ final filteredLessonsProvider = Provider<List<Lesson>>((ref) {
       return false;
     }
     if (q.isNotEmpty) {
-      final teacherName =
-          teachers[lesson.teacherId]?.fullName.toLowerCase() ?? '';
+      final teacherNames = lesson.allTeacherIds
+          .map((id) => teachers[id]?.fullName.toLowerCase() ?? '')
+          .join(' ');
       final roomName = classrooms[lesson.classroomId]?.name.toLowerCase() ?? '';
       final studentNames = lesson.studentIds
           .map((id) => students[id]?.fullName.toLowerCase() ?? '')
           .join(' ');
       final haystack =
-          '${lesson.title.toLowerCase()} $teacherName $roomName $studentNames ${lesson.notes.toLowerCase()}';
+          '${lesson.title.toLowerCase()} $teacherNames $roomName $studentNames ${lesson.notes.toLowerCase()}';
       if (!haystack.contains(q)) return false;
     }
     return true;
@@ -355,21 +421,22 @@ final filteredLessonsProvider = Provider<List<Lesson>>((ref) {
 final classroomOccupancyProvider =
     Provider<Map<String, ClassroomOccupancy>>((ref) {
   final classrooms = ref.watch(classroomsStreamProvider).value ?? const [];
-  final lessons = ref.watch(lessonsStreamProvider).value ?? const [];
+  final rawLessons = ref.watch(lessonsStreamProvider).value ?? const [];
   final teachers = ref.watch(teachersMapProvider);
   final now = ref.watch(liveClockProvider).value ?? DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final todayLessons = Lesson.expandAll(rawLessons, today, today);
 
   final result = <String, ClassroomOccupancy>{};
   for (final room in classrooms) {
     Lesson? active;
     Lesson? nextToday;
 
-    for (final lesson in lessons) {
+    for (final lesson in todayLessons) {
       if (lesson.classroomId != room.id) continue;
       if (lesson.isHappeningNowAt(now)) {
         active ??= lesson;
-      } else if (lesson.isOnDate(now) &&
-          lesson.status != LessonStatus.canceled &&
+      } else if (lesson.status != LessonStatus.canceled &&
           lesson.status != LessonStatus.completed &&
           lesson.startTime.isAfter(now)) {
         if (nextToday == null ||
@@ -390,16 +457,17 @@ final classroomOccupancyProvider =
 });
 
 final todayPulseProvider = Provider<TodayPulseStats>((ref) {
-  final lessons = ref.watch(lessonsStreamProvider).value ?? const [];
+  final rawLessons = ref.watch(lessonsStreamProvider).value ?? const [];
   final classrooms = ref.watch(classroomsStreamProvider).value ?? const [];
   final students = ref.watch(studentsStreamProvider).value ?? const [];
   final occupancy = ref.watch(classroomOccupancyProvider);
   final now = ref.watch(liveClockProvider).value ?? DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final todayLessons = Lesson.expandAll(rawLessons, today, today);
 
-  final activeNow = lessons.where((l) => l.isHappeningNowAt(now)).length;
-  final todayTotal = lessons
-      .where((l) => l.isOnDate(now) && l.status != LessonStatus.canceled)
-      .length;
+  final activeNow = todayLessons.where((l) => l.isHappeningNowAt(now)).length;
+  final todayTotal =
+      todayLessons.where((l) => l.status != LessonStatus.canceled).length;
   final freeRooms =
       occupancy.values.where((item) => !item.isOccupied).length;
 
@@ -410,4 +478,19 @@ final todayPulseProvider = Provider<TodayPulseStats>((ref) {
     totalClassroomsCount: classrooms.length,
     activeStudentsCount: students.length,
   );
+});
+
+/// Saturday Speaking Clubs (and any lesson marked as a Speaking Club) so staff
+/// can inspect and change who is responsible in one tap.
+final saturdayClubsProvider = Provider<List<Lesson>>((ref) {
+  final lessons = ref.watch(lessonsStreamProvider).value ?? const [];
+  return lessons
+      .where(
+        (l) =>
+            l.isSpeakingClub ||
+            (l.isRecurring &&
+                l.recurrenceWeekdays.contains(DateTime.saturday) &&
+                l.title.toLowerCase().contains('club')),
+      )
+      .toList(growable: false);
 });

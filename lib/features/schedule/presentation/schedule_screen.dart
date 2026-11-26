@@ -5,9 +5,11 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../core/models/language_type.dart';
 import '../../../core/models/lesson.dart';
+import '../../../core/models/teacher.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/confirm_delete_dialog.dart';
+import '../../../shared/widgets/language_badge.dart';
 import '../../../shared/widgets/liquid_glass_container.dart';
 import '../../../shared/widgets/todays_pulse_strip.dart';
 import 'agenda_list_view.dart';
@@ -133,6 +135,13 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
 
         // Today's Pulse Summary Strip
         const TodaysPulseStrip(),
+        const SizedBox(height: 16),
+
+        // Saturday Speaking Clubs (Weekly Recurring + Responsible Teacher Selector)
+        _SaturdayClubsStrip(
+          teachers: teachers,
+          onInspectClub: (club) => _openLessonInspector(context, club),
+        ),
         const SizedBox(height: 18),
 
         // Controls Bar: View Switcher + Date Navigator + Filters
@@ -253,26 +262,19 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                     ),
                   ),
 
-                  // Language Chips (All / Chinese / English)
+                  // Language & Category Chips (All / Chinese / English / Sharing)
                   LiquidGlassPillButton(
-                    label: 'All Languages',
+                    label: 'All',
                     selected: filter.language == null,
                     onTap: () => filterCtrl.setLanguage(null),
                   ),
-                  LiquidGlassPillButton(
-                    label: 'Chinese',
-                    selected: filter.language == CourseLanguage.chinese,
-                    accentColor: AppColors.chineseAccent(context),
-                    onTap: () =>
-                        filterCtrl.setLanguage(CourseLanguage.chinese),
-                  ),
-                  LiquidGlassPillButton(
-                    label: 'English',
-                    selected: filter.language == CourseLanguage.english,
-                    accentColor: AppColors.englishAccent(context),
-                    onTap: () =>
-                        filterCtrl.setLanguage(CourseLanguage.english),
-                  ),
+                  for (final lang in CourseLanguage.values)
+                    LiquidGlassPillButton(
+                      label: lang.label,
+                      selected: filter.language == lang,
+                      accentColor: lang.accentColor(context),
+                      onTap: () => filterCtrl.setLanguage(lang),
+                    ),
 
                   // Teacher Dropdown Filter
                   SizedBox(
@@ -378,6 +380,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
             ),
           ScheduleViewMode.agenda => AgendaListView(
               lessons: filteredLessons,
+              anchorDate: filter.selectedDate,
               onSelectLesson: (l) => _openLessonInspector(context, l),
             ),
         },
@@ -393,5 +396,188 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       return '${DateFormat('MMM d').format(start)} – ${DateFormat('MMM d, y').format(end)}';
     }
     return DateFormat('EEE, MMM d, y').format(filter.selectedDate);
+  }
+}
+
+class _SaturdayClubsStrip extends ConsumerWidget {
+  const _SaturdayClubsStrip({
+    required this.teachers,
+    required this.onInspectClub,
+  });
+
+  final List<Teacher> teachers;
+  final ValueChanged<Lesson> onInspectClub;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final clubs = ref.watch(saturdayClubsProvider);
+    if (clubs.isEmpty) return const SizedBox.shrink();
+
+    final classrooms = ref.watch(classroomsMapProvider);
+    final teacherIds = {for (final t in teachers) t.id};
+
+    return LiquidGlassContainer(
+      borderRadius: 24,
+      blurSigma: 20,
+      elevation: 0.65,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                CupertinoIcons.sparkles,
+                size: 18,
+                color: AppColors.chineseCoralGold,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Saturday Speaking Clubs (Every Saturday)',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final twoCols = constraints.maxWidth >= 680 && clubs.length >= 2;
+              if (!twoCols) {
+                return Column(
+                  children: [
+                    for (int i = 0; i < clubs.length; i++) ...[
+                      _ClubCard(
+                        club: clubs[i],
+                        roomName: classrooms[clubs[i].classroomId]?.name ?? 'Hall',
+                        teachers: teachers,
+                        validTeacherIds: teacherIds,
+                        onInspect: () => onInspectClub(clubs[i]),
+                        onAssignResponsible: (teacherId) async {
+                          await ref.read(dataRepositoryProvider).upsertLesson(
+                                clubs[i].copyWith(teacherId: teacherId),
+                              );
+                        },
+                      ),
+                      if (i < clubs.length - 1) const SizedBox(height: 10),
+                    ],
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  for (int i = 0; i < clubs.length; i++) ...[
+                    Expanded(
+                      child: _ClubCard(
+                        club: clubs[i],
+                        roomName: classrooms[clubs[i].classroomId]?.name ?? 'Hall',
+                        teachers: teachers,
+                        validTeacherIds: teacherIds,
+                        onInspect: () => onInspectClub(clubs[i]),
+                        onAssignResponsible: (teacherId) async {
+                          await ref.read(dataRepositoryProvider).upsertLesson(
+                                clubs[i].copyWith(teacherId: teacherId),
+                              );
+                        },
+                      ),
+                    ),
+                    if (i < clubs.length - 1) const SizedBox(width: 12),
+                  ],
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClubCard extends StatelessWidget {
+  const _ClubCard({
+    required this.club,
+    required this.roomName,
+    required this.teachers,
+    required this.validTeacherIds,
+    required this.onInspect,
+    required this.onAssignResponsible,
+  });
+
+  final Lesson club;
+  final String roomName;
+  final List<Teacher> teachers;
+  final Set<String> validTeacherIds;
+  final VoidCallback onInspect;
+  final ValueChanged<String> onAssignResponsible;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = club.language.accentColor(context);
+    final selectedTeacherId =
+        validTeacherIds.contains(club.teacherId) ? club.teacherId : null;
+
+    return LiquidGlassContainer(
+      borderRadius: 18,
+      blurSigma: 12,
+      elevation: 0.35,
+      tintColor: accent,
+      tintStrength: 0.08,
+      padding: const EdgeInsets.all(14),
+      onTap: onInspect,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              LanguageBadge(language: club.language, compact: true),
+              GlassInfoTag(
+                icon: CupertinoIcons.clock,
+                label:
+                    'Sat ${DateFormat('h:mm a').format(club.startTime)} • $roomName',
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            club.title,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            initialValue: selectedTeacherId,
+            isExpanded: true,
+            isDense: true,
+            decoration: const InputDecoration(
+              labelText: 'Responsible Teacher',
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+            ),
+            items: [
+              for (final t in teachers)
+                DropdownMenuItem<String>(
+                  value: t.id,
+                  child: Text(
+                    t.fullName,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+            onChanged: (val) {
+              if (val != null) {
+                onAssignResponsible(val);
+              }
+            },
+          ),
+        ],
+      ),
+    );
   }
 }

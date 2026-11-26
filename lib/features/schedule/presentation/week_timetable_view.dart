@@ -38,6 +38,11 @@ class WeekTimetableView extends ConsumerWidget {
     final now = ref.watch(liveClockProvider).value ?? DateTime.now();
     final teachers = ref.watch(teachersMapProvider);
     final classrooms = ref.watch(classroomsMapProvider);
+    final expandedWeek = Lesson.expandAll(
+      lessons,
+      days.first,
+      days.last,
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -52,7 +57,7 @@ class WeekTimetableView extends ConsumerWidget {
                   day: day,
                   now: now,
                   dayLessons:
-                      lessons.where((l) => l.isOnDate(day)).toList(),
+                      expandedWeek.where((l) => l.isOnDate(day)).toList(),
                   teachers: teachers,
                   classrooms: classrooms,
                 ),
@@ -77,7 +82,7 @@ class WeekTimetableView extends ConsumerWidget {
                     day: days[i],
                     now: now,
                     dayLessons:
-                        lessons.where((l) => l.isOnDate(days[i])).toList(),
+                        expandedWeek.where((l) => l.isOnDate(days[i])).toList(),
                     teachers: teachers,
                     classrooms: classrooms,
                   ),

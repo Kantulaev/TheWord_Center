@@ -2,11 +2,19 @@ import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../core/data/app_changelog.dart';
+import '../../core/models/operations_models.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/glass_background.dart';
+import '../../features/auth/presentation/staff_access_dialog.dart';
 import '../../features/classrooms/presentation/classroom_detail_panel.dart';
 import '../../features/classrooms/presentation/classrooms_screen.dart';
+import '../../features/finance/presentation/finance_screen.dart';
+import '../../features/groups/presentation/group_detail_panel.dart';
+import '../../features/groups/presentation/groups_screen.dart';
+import '../../features/operations/presentation/leads_requests_screen.dart';
+import '../../features/operations/presentation/updates_activity_screen.dart';
 import '../../features/schedule/presentation/lesson_detail_panel.dart';
 import '../../features/schedule/presentation/lesson_form_dialog.dart';
 import '../../features/schedule/presentation/schedule_screen.dart';
@@ -32,27 +40,58 @@ class _AdaptiveShellState extends ConsumerState<AdaptiveShell> {
   bool _railExpanded = false;
 
   @override
+  void initState() {
+    super.initState();
+    Future.microtask(
+      () => ref.read(dataRepositoryProvider).seedInitialCenterDataIfNeeded(),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final activeTab = ref.watch(navigationTabProvider);
     final inspector = ref.watch(inspectorSelectionProvider);
     final animateBg = ref.watch(enableAmbientAnimationsProvider);
     final themeMode = ref.watch(themeModeProvider);
     final repo = ref.watch(dataRepositoryProvider);
+    final authRepo = ref.watch(authRepositoryProvider);
+    final authUser = ref.watch(authStateProvider).value;
+    final staffEmail = authRepo.isSignInRequired ? authUser?.email : null;
+    Future<void> handleSignOut() => ref.read(authRepositoryProvider).signOut();
 
     final lessonsCount =
         ref.watch(lessonsStreamProvider).value?.length ?? 0;
+    final groupsCount =
+        ref.watch(groupsStreamProvider).value?.length ?? 0;
     final teachersCount =
         ref.watch(teachersStreamProvider).value?.length ?? 0;
     final classroomsCount =
         ref.watch(classroomsStreamProvider).value?.length ?? 0;
     final studentsCount =
         ref.watch(studentsStreamProvider).value?.length ?? 0;
+    final paymentsCount =
+        ref.watch(paymentsStreamProvider).value?.length ?? 0;
+    final leadsCount =
+        (ref.watch(trialLeadsStreamProvider).value?.length ?? 0) +
+            (ref
+                    .watch(rescheduleRequestsStreamProvider)
+                    .value
+                    ?.where((r) => r.status == RequestStatus.pending)
+                    .length ??
+                0);
+    final updatesCount =
+        ref.watch(activityLogsStreamProvider).value?.length ??
+            kAppChangelog.length;
 
     final bodyPage = switch (activeTab) {
       AppTab.schedule => const ScheduleScreen(),
+      AppTab.groups => const GroupsScreen(),
       AppTab.teachers => const TeachersScreen(),
       AppTab.classrooms => const ClassroomsScreen(),
       AppTab.students => const StudentsScreen(),
+      AppTab.finance => const FinanceScreen(),
+      AppTab.leads => const LeadsRequestsScreen(),
+      AppTab.updates => const UpdatesActivityScreen(),
     };
 
     return LiquidAuroraBackground(
@@ -78,6 +117,15 @@ class _AdaptiveShellState extends ConsumerState<AdaptiveShell> {
                       onToggleTheme: () =>
                           ref.read(themeModeProvider.notifier).toggle(),
                       onShowSyncInfo: () => _showSyncStatusDialog(context),
+                      onOpenStaffAccess: () => showStaffAccessModal(context),
+                      onOpenUpdates: () {
+                        ref
+                            .read(navigationTabProvider.notifier)
+                            .select(AppTab.updates);
+                        ref.read(inspectorSelectionProvider.notifier).close();
+                      },
+                      onSignOut:
+                          authRepo.isSignInRequired ? handleSignOut : null,
                     ),
                     Expanded(child: bodyPage),
                   ],
@@ -111,12 +159,17 @@ class _AdaptiveShellState extends ConsumerState<AdaptiveShell> {
                         activeTab: activeTab,
                         counts: {
                           AppTab.schedule: lessonsCount,
+                          AppTab.groups: groupsCount,
                           AppTab.teachers: teachersCount,
                           AppTab.classrooms: classroomsCount,
                           AppTab.students: studentsCount,
+                          AppTab.finance: paymentsCount,
+                          AppTab.leads: leadsCount,
+                          AppTab.updates: updatesCount,
                         },
                         isCloudSync: repo.isCloudSync,
                         modeLabel: repo.modeLabel,
+                        staffEmail: staffEmail,
                         themeMode: themeMode,
                         onSelectTab: (tab) {
                           ref.read(navigationTabProvider.notifier).select(tab);
@@ -125,6 +178,9 @@ class _AdaptiveShellState extends ConsumerState<AdaptiveShell> {
                         onToggleTheme: () =>
                             ref.read(themeModeProvider.notifier).toggle(),
                         onShowSyncInfo: () => _showSyncStatusDialog(context),
+                        onOpenStaffAccess: () => showStaffAccessModal(context),
+                        onSignOut:
+                            authRepo.isSignInRequired ? handleSignOut : null,
                       )
                     else if (isTablet)
                       _TabletGlassRail(
@@ -140,6 +196,9 @@ class _AdaptiveShellState extends ConsumerState<AdaptiveShell> {
                         onToggleTheme: () =>
                             ref.read(themeModeProvider.notifier).toggle(),
                         onShowSyncInfo: () => _showSyncStatusDialog(context),
+                        onOpenStaffAccess: () => showStaffAccessModal(context),
+                        onSignOut:
+                            authRepo.isSignInRequired ? handleSignOut : null,
                       ),
                     const SizedBox(width: 14),
                     Expanded(child: bodyPage),
@@ -174,6 +233,11 @@ class _AdaptiveShellState extends ConsumerState<AdaptiveShell> {
       InspectorKind.lesson => LessonDetailPanel(
           key: ValueKey('lesson_${selection.id}'),
           lessonId: selection.id,
+          onClose: close,
+        ),
+      InspectorKind.group => GroupDetailPanel(
+          key: ValueKey('group_${selection.id}'),
+          groupId: selection.id,
           onClose: close,
         ),
       InspectorKind.teacher => TeacherDetailPanel(
@@ -338,22 +402,28 @@ class _DesktopGlassSidebar extends StatelessWidget {
     required this.counts,
     required this.isCloudSync,
     required this.modeLabel,
+    this.staffEmail,
     required this.themeMode,
     required this.onSelectTab,
     required this.onNewLesson,
     required this.onToggleTheme,
     required this.onShowSyncInfo,
+    required this.onOpenStaffAccess,
+    this.onSignOut,
   });
 
   final AppTab activeTab;
   final Map<AppTab, int> counts;
   final bool isCloudSync;
   final String modeLabel;
+  final String? staffEmail;
   final ThemeMode themeMode;
   final ValueChanged<AppTab> onSelectTab;
   final VoidCallback onNewLesson;
   final VoidCallback onToggleTheme;
   final VoidCallback onShowSyncInfo;
+  final VoidCallback onOpenStaffAccess;
+  final VoidCallback? onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -373,13 +443,52 @@ class _DesktopGlassSidebar extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
             child: _BrandMark(),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 8),
+          InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: () => onSelectTab(AppTab.updates),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                color: AppColors.liveEmerald.withValues(alpha: 0.12),
+                border: Border.all(
+                  color: AppColors.liveEmerald.withValues(alpha: 0.28),
+                ),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    CupertinoIcons.sparkles,
+                    size: 13,
+                    color: AppColors.liveEmerald,
+                  ),
+                  SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'v$kCurrentAppVersion • Updates',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.liveEmerald,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
           LiquidPrimaryButton(
             label: 'Schedule Lesson',
             icon: CupertinoIcons.plus,
             onPressed: onNewLesson,
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           Text(
             'WORKSPACE',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -389,16 +498,24 @@ class _DesktopGlassSidebar extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 8),
-          for (final tab in AppTab.values) ...[
-            _SidebarNavItem(
-              tab: tab,
-              count: counts[tab] ?? 0,
-              selected: activeTab == tab,
-              onTap: () => onSelectTab(tab),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  for (final tab in AppTab.values) ...[
+                    _SidebarNavItem(
+                      tab: tab,
+                      count: counts[tab] ?? 0,
+                      selected: activeTab == tab,
+                      onTap: () => onSelectTab(tab),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(height: 6),
-          ],
-          const Spacer(),
+          ),
+          const SizedBox(height: 8),
           LiquidGlassContainer(
             borderRadius: 18,
             blurSigma: 12,
@@ -470,6 +587,83 @@ class _DesktopGlassSidebar extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 8),
+          LiquidGlassContainer(
+            borderRadius: 18,
+            blurSigma: 12,
+            elevation: 0.25,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            onTap: onOpenStaffAccess,
+            child: Row(
+              children: [
+                Icon(
+                  CupertinoIcons.person_badge_plus,
+                  size: 17,
+                  color: AppColors.englishAccent(context),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Staff Access',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                Text(
+                  'Invite',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppColors.textMuted(context),
+                      ),
+                ),
+              ],
+            ),
+          ),
+          if (onSignOut != null) ...[
+            const SizedBox(height: 8),
+            LiquidGlassContainer(
+              borderRadius: 18,
+              blurSigma: 12,
+              elevation: 0.25,
+              tintColor: AppColors.dangerRose,
+              tintStrength: 0.05,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              onTap: onSignOut,
+              child: Row(
+                children: [
+                  const Icon(
+                    CupertinoIcons.square_arrow_right,
+                    size: 17,
+                    color: AppColors.dangerRose,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Sign Out',
+                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                color: AppColors.dangerRose,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        if (staffEmail != null && staffEmail!.isNotEmpty)
+                          Text(
+                            staffEmail!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(fontSize: 10.5),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -550,6 +744,8 @@ class _TabletGlassRail extends StatelessWidget {
     required this.onSelectTab,
     required this.onToggleTheme,
     required this.onShowSyncInfo,
+    required this.onOpenStaffAccess,
+    this.onSignOut,
   });
 
   final AppTab activeTab;
@@ -560,6 +756,8 @@ class _TabletGlassRail extends StatelessWidget {
   final ValueChanged<AppTab> onSelectTab;
   final VoidCallback onToggleTheme;
   final VoidCallback onShowSyncInfo;
+  final VoidCallback onOpenStaffAccess;
+  final VoidCallback? onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -569,62 +767,87 @@ class _TabletGlassRail extends StatelessWidget {
       blurSigma: 24,
       elevation: 0.85,
       padding: const EdgeInsets.symmetric(vertical: 10),
-      child: NavigationRail(
-        backgroundColor: Colors.transparent,
-        extended: expanded,
-        selectedIndex: activeTab.index,
-        onDestinationSelected: (i) => onSelectTab(AppTab.values[i]),
-        leading: Column(
-          children: [
-            IconButton(
-              tooltip: expanded ? 'Collapse Rail' : 'Expand Rail',
-              onPressed: onToggleExpand,
-              icon: Icon(
-                expanded
-                    ? CupertinoIcons.sidebar_left
-                    : CupertinoIcons.chevron_right_2,
+      child: LayoutBuilder(
+        builder: (context, railConstraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: railConstraints.maxHeight),
+              child: IntrinsicHeight(
+                child: NavigationRail(
+                  backgroundColor: Colors.transparent,
+                  extended: expanded,
+                  selectedIndex: activeTab.index,
+                  onDestinationSelected: (i) => onSelectTab(AppTab.values[i]),
+                  leading: Column(
+                    children: [
+                      IconButton(
+                        tooltip: expanded ? 'Collapse Rail' : 'Expand Rail',
+                        onPressed: onToggleExpand,
+                        icon: Icon(
+                          expanded
+                              ? CupertinoIcons.sidebar_left
+                              : CupertinoIcons.chevron_right_2,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                    ],
+                  ),
+                  trailing: Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Toggle Light/Dark Mode',
+                            onPressed: onToggleTheme,
+                            icon: Icon(
+                              isDark
+                                  ? CupertinoIcons.moon_stars_fill
+                                  : CupertinoIcons.sun_max_fill,
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Sync Status',
+                            onPressed: onShowSyncInfo,
+                            icon: Icon(
+                              CupertinoIcons.cloud_fill,
+                              color: isCloudSync
+                                  ? AppColors.liveEmerald
+                                  : AppColors.englishAccent(context),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Staff Access & Invites',
+                            onPressed: onOpenStaffAccess,
+                            icon: const Icon(CupertinoIcons.person_badge_plus),
+                          ),
+                          if (onSignOut != null)
+                            IconButton(
+                              tooltip: 'Sign Out',
+                              onPressed: onSignOut,
+                              icon: const Icon(
+                                CupertinoIcons.square_arrow_right,
+                                color: AppColors.dangerRose,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  destinations: [
+                    for (final tab in AppTab.values)
+                      NavigationRailDestination(
+                        icon: Icon(_iconForTab(tab, false)),
+                        selectedIcon: Icon(_iconForTab(tab, true)),
+                        label: Text(tab.label),
+                      ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 6),
-          ],
-        ),
-        trailing: Expanded(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  tooltip: 'Toggle Light/Dark Mode',
-                  onPressed: onToggleTheme,
-                  icon: Icon(
-                    isDark
-                        ? CupertinoIcons.moon_stars_fill
-                        : CupertinoIcons.sun_max_fill,
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Sync Status',
-                  onPressed: onShowSyncInfo,
-                  icon: Icon(
-                    CupertinoIcons.cloud_fill,
-                    color: isCloudSync
-                        ? AppColors.liveEmerald
-                        : AppColors.englishAccent(context),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        destinations: [
-          for (final tab in AppTab.values)
-            NavigationRailDestination(
-              icon: Icon(_iconForTab(tab, false)),
-              selectedIcon: Icon(_iconForTab(tab, true)),
-              label: Text(tab.label),
-            ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -636,12 +859,18 @@ class _MobileTopBar extends StatelessWidget {
     required this.themeMode,
     required this.onToggleTheme,
     required this.onShowSyncInfo,
+    required this.onOpenStaffAccess,
+    required this.onOpenUpdates,
+    this.onSignOut,
   });
 
   final bool isCloudSync;
   final ThemeMode themeMode;
   final VoidCallback onToggleTheme;
   final VoidCallback onShowSyncInfo;
+  final VoidCallback onOpenStaffAccess;
+  final VoidCallback onOpenUpdates;
+  final VoidCallback? onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -655,28 +884,55 @@ class _MobileTopBar extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Row(
           children: [
-            const _BrandMark(compact: true),
-            const Spacer(),
+            const Expanded(child: _BrandMark(compact: true)),
+            LiquidGlassPillButton(
+              label: 'v$kCurrentAppVersion',
+              accentColor: AppColors.liveEmerald,
+              selected: true,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              onTap: onOpenUpdates,
+            ),
+            const SizedBox(width: 4),
             LiquidGlassPillButton(
               label: isCloudSync ? 'Cloud' : 'Demo',
               accentColor: isCloudSync
                   ? AppColors.liveEmerald
                   : AppColors.englishAccent(context),
               selected: true,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
               onTap: onShowSyncInfo,
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 2),
             IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Staff Access',
+              onPressed: onOpenStaffAccess,
+              icon: const Icon(
+                CupertinoIcons.person_badge_plus,
+                size: 19,
+              ),
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
               tooltip: 'Toggle Theme',
               onPressed: onToggleTheme,
               icon: Icon(
                 isDark
                     ? CupertinoIcons.moon_stars_fill
                     : CupertinoIcons.sun_max_fill,
-                size: 20,
+                size: 19,
               ),
             ),
+            if (onSignOut != null)
+              IconButton(
+                tooltip: 'Sign Out',
+                onPressed: onSignOut,
+                icon: const Icon(
+                  CupertinoIcons.square_arrow_right,
+                  color: AppColors.dangerRose,
+                  size: 20,
+                ),
+              ),
           ],
         ),
       ),
@@ -693,9 +949,25 @@ class _MobileFloatingNavBar extends StatelessWidget {
   final AppTab activeTab;
   final ValueChanged<AppTab> onSelect;
 
+  static const _primaryTabs = [
+    AppTab.schedule,
+    AppTab.groups,
+    AppTab.finance,
+    AppTab.students,
+  ];
+
+  static const _moreTabs = [
+    AppTab.teachers,
+    AppTab.classrooms,
+    AppTab.leads,
+    AppTab.updates,
+  ];
+
   @override
   Widget build(BuildContext context) {
     final accent = AppColors.englishAccent(context);
+    final isMoreSelected = _moreTabs.contains(activeTab);
+
     return LiquidGlassContainer(
       borderRadius: 28,
       blurSigma: 26,
@@ -704,7 +976,7 @@ class _MobileFloatingNavBar extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          for (final tab in AppTab.values)
+          for (final tab in _primaryTabs)
             Expanded(
               child: InkWell(
                 borderRadius: BorderRadius.circular(20),
@@ -735,7 +1007,7 @@ class _MobileFloatingNavBar extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 10,
                           fontWeight: activeTab == tab
                               ? FontWeight.w700
                               : FontWeight.w500,
@@ -749,7 +1021,99 @@ class _MobileFloatingNavBar extends StatelessWidget {
                 ),
               ),
             ),
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () => _openMoreSheet(context),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  color: isMoreSelected
+                      ? accent.withValues(alpha: 0.14)
+                      : Colors.transparent,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isMoreSelected
+                          ? CupertinoIcons.square_grid_2x2_fill
+                          : CupertinoIcons.square_grid_2x2,
+                      size: 20,
+                      color: isMoreSelected
+                          ? accent
+                          : AppColors.textSecondary(context),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'More',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight:
+                            isMoreSelected ? FontWeight.w700 : FontWeight.w500,
+                        color: isMoreSelected
+                            ? accent
+                            : AppColors.textSecondary(context),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  void _openMoreSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: LiquidGlassContainer(
+          borderRadius: 28,
+          blurSigma: 28,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'More Sections',
+                style: Theme.of(sheetCtx).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              for (final tab in _moreTabs) ...[
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  leading: Icon(_iconForTab(tab, activeTab == tab)),
+                  title: Text(tab.label),
+                  trailing: tab == AppTab.updates
+                      ? const StatusBadge(
+                          label: 'v$kCurrentAppVersion',
+                          color: AppColors.liveEmerald,
+                          compact: true,
+                        )
+                      : null,
+                  selected: activeTab == tab,
+                  onTap: () {
+                    Navigator.of(sheetCtx).pop();
+                    onSelect(tab);
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -759,12 +1123,20 @@ IconData _iconForTab(AppTab tab, bool selected) {
   return switch (tab) {
     AppTab.schedule =>
       selected ? CupertinoIcons.calendar_today : CupertinoIcons.calendar,
+    AppTab.groups =>
+      selected ? CupertinoIcons.person_3_fill : CupertinoIcons.person_3,
     AppTab.teachers =>
       selected ? CupertinoIcons.person_2_fill : CupertinoIcons.person_2,
     AppTab.classrooms =>
       selected ? CupertinoIcons.building_2_fill : CupertinoIcons.building_2_fill,
-    AppTab.students => selected
-        ? CupertinoIcons.book_fill
-        : CupertinoIcons.book,
+    AppTab.students =>
+      selected ? CupertinoIcons.book_fill : CupertinoIcons.book,
+    AppTab.finance => selected
+        ? CupertinoIcons.money_dollar_circle_fill
+        : CupertinoIcons.money_dollar_circle,
+    AppTab.leads =>
+      selected ? CupertinoIcons.sparkles : CupertinoIcons.sparkles,
+    AppTab.updates =>
+      selected ? CupertinoIcons.rocket_fill : CupertinoIcons.rocket,
   };
 }

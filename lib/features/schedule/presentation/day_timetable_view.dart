@@ -46,9 +46,16 @@ class _DayTimetableViewState extends ConsumerState<DayTimetableView> {
   @override
   Widget build(BuildContext context) {
     final classrooms = ref.watch(classroomsStreamProvider).value ?? const [];
-    final dayLessons = widget.lessons
-        .where((l) => l.isOnDate(widget.selectedDate))
-        .toList(growable: false);
+    final selectedDay = DateTime(
+      widget.selectedDate.year,
+      widget.selectedDate.month,
+      widget.selectedDate.day,
+    );
+    final dayLessons = Lesson.expandAll(
+      widget.lessons,
+      selectedDay,
+      selectedDay,
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {

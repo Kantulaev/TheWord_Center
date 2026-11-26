@@ -160,7 +160,10 @@ class _StudentFormDialogState extends ConsumerState<StudentFormDialog> {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                for (final lang in CourseLanguage.values) ...[
+                                for (final lang in const [
+                                  CourseLanguage.chinese,
+                                  CourseLanguage.english,
+                                ]) ...[
                                   LiquidGlassPillButton(
                                     label: lang.label,
                                     selected: _targetLanguage == lang,

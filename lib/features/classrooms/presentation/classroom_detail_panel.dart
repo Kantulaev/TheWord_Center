@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../core/models/classroom.dart';
 import '../../../core/models/language_type.dart';
+import '../../../core/models/lesson.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/confirm_delete_dialog.dart';
@@ -45,12 +46,12 @@ class ClassroomDetailPanel extends ConsumerWidget {
     final lessons = ref.watch(lessonsStreamProvider).value ?? const [];
     final teachers = ref.watch(teachersMapProvider);
     final now = ref.watch(liveClockProvider).value ?? DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
 
-    final todayRoomLessons = lessons
+    final todayRoomLessons = Lesson.expandAll(lessons, today, today)
         .where(
           (l) =>
               l.classroomId == room.id &&
-              l.isOnDate(now) &&
               l.status != LessonStatus.canceled,
         )
         .toList()

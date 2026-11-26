@@ -162,7 +162,10 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
                 selected: _languageFilter == null,
                 onTap: () => setState(() => _languageFilter = null),
               ),
-              for (final lang in CourseLanguage.values)
+              for (final lang in const [
+                CourseLanguage.chinese,
+                CourseLanguage.english,
+              ])
                 LiquidGlassPillButton(
                   label: lang.label,
                   selected: _languageFilter == lang,

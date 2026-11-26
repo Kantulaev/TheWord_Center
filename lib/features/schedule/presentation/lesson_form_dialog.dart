@@ -63,8 +63,12 @@ class _LessonFormDialogState extends ConsumerState<LessonFormDialog> {
   late TimeOfDay _startTime;
   late TimeOfDay _endTime;
   String? _teacherId;
+  late Set<String> _coTeacherIds;
   String? _classroomId;
   late Set<String> _studentIds;
+  late Set<int> _recurrenceWeekdays;
+  DateTime? _recurrenceUntil;
+  late bool _isSpeakingClub;
   bool _filterStudentsByLanguage = false;
   bool _saving = false;
 
@@ -86,8 +90,12 @@ class _LessonFormDialogState extends ConsumerState<LessonFormDialog> {
     _startTime = TimeOfDay.fromDateTime(start);
     _endTime = TimeOfDay.fromDateTime(end);
     _teacherId = existing?.teacherId ?? widget.initialTeacherId;
+    _coTeacherIds = {...(existing?.coTeacherIds ?? const <String>[])};
     _classroomId = existing?.classroomId ?? widget.initialClassroomId;
     _studentIds = {...(existing?.studentIds ?? const <String>[])};
+    _recurrenceWeekdays = {...(existing?.recurrenceWeekdays ?? const <int>[])};
+    _recurrenceUntil = existing?.recurrenceUntil;
+    _isSpeakingClub = existing?.isSpeakingClub ?? false;
   }
 
   DateTime _defaultNextHour() {
@@ -139,6 +147,7 @@ class _LessonFormDialogState extends ConsumerState<LessonFormDialog> {
     final startDt = _combine(_date, _startTime);
     var endDt = _combine(_date, _endTime);
     // Keep end date on same day unless explicitly earlier
+    final sortedDays = _recurrenceWeekdays.toList()..sort();
     final candidate = Lesson(
       id: widget.existing?.id ?? '__draft__',
       title: _titleCtrl.text.trim().isEmpty
@@ -147,6 +156,9 @@ class _LessonFormDialogState extends ConsumerState<LessonFormDialog> {
       language: _language,
       lessonType: _lessonType,
       teacherId: effectiveTeacherId,
+      coTeacherIds: _coTeacherIds
+          .where((id) => id != effectiveTeacherId)
+          .toList(),
       classroomId: effectiveClassroomId,
       studentIds: _studentIds.toList(),
       startTime: startDt,
@@ -154,6 +166,10 @@ class _LessonFormDialogState extends ConsumerState<LessonFormDialog> {
       status: _status,
       notes: _notesCtrl.text.trim(),
       createdAt: widget.existing?.createdAt ?? DateTime.now(),
+      recurrenceWeekdays: sortedDays,
+      recurrenceUntil: sortedDays.isEmpty ? null : _recurrenceUntil,
+      excludedDateKeys: widget.existing?.excludedDateKeys ?? const [],
+      isSpeakingClub: _isSpeakingClub,
     );
 
     final validation = ScheduleConflictDetector.validate(
@@ -294,22 +310,26 @@ class _LessonFormDialogState extends ConsumerState<LessonFormDialog> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Language',
+                              'Category / Language',
                               style: Theme.of(context).textTheme.labelMedium,
                             ),
                             const SizedBox(height: 6),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
                               children: [
-                                for (final lang in CourseLanguage.values) ...[
+                                for (final lang in CourseLanguage.values)
                                   LiquidGlassPillButton(
                                     label: lang.label,
                                     selected: _language == lang,
                                     accentColor: lang.accentColor(context),
-                                    onTap: () => setState(() => _language = lang),
+                                    onTap: () => setState(() {
+                                      _language = lang;
+                                      if (lang == CourseLanguage.sharing) {
+                                        _lessonType = LessonType.group;
+                                      }
+                                    }),
                                   ),
-                                  const SizedBox(width: 8),
-                                ],
                               ],
                             ),
                           ],
@@ -448,6 +468,149 @@ class _LessonFormDialogState extends ConsumerState<LessonFormDialog> {
                     ),
                     const SizedBox(height: 16),
 
+                    // Repeat Schedule (e.g. Mon / Wed / Fri or Always on Saturdays)
+                    Text(
+                      'Repeat Schedule',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        LiquidGlassPillButton(
+                          label: 'One-time',
+                          selected: _recurrenceWeekdays.isEmpty,
+                          accentColor: accent,
+                          onTap: () => setState(() {
+                            _recurrenceWeekdays.clear();
+                            _recurrenceUntil = null;
+                          }),
+                        ),
+                        LiquidGlassPillButton(
+                          label: 'Mon / Wed / Fri',
+                          selected: _matchesDays({
+                            DateTime.monday,
+                            DateTime.wednesday,
+                            DateTime.friday,
+                          }),
+                          accentColor: accent,
+                          onTap: () => setState(() {
+                            _recurrenceWeekdays = {
+                              DateTime.monday,
+                              DateTime.wednesday,
+                              DateTime.friday,
+                            };
+                          }),
+                        ),
+                        LiquidGlassPillButton(
+                          label: 'Tue / Thu',
+                          selected: _matchesDays({
+                            DateTime.tuesday,
+                            DateTime.thursday,
+                          }),
+                          accentColor: accent,
+                          onTap: () => setState(() {
+                            _recurrenceWeekdays = {
+                              DateTime.tuesday,
+                              DateTime.thursday,
+                            };
+                          }),
+                        ),
+                        LiquidGlassPillButton(
+                          label: 'Every Saturday',
+                          selected: _matchesDays({DateTime.saturday}),
+                          accentColor: accent,
+                          onTap: () => setState(() {
+                            _recurrenceWeekdays = {DateTime.saturday};
+                          }),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (int wd = DateTime.monday;
+                            wd <= DateTime.sunday;
+                            wd++)
+                          FilterChip(
+                            label: Text(Lesson.weekdayShortLabel(wd)),
+                            selected: _recurrenceWeekdays.contains(wd),
+                            selectedColor: accent.withValues(alpha: 0.18),
+                            onSelected: (selected) {
+                              setState(() {
+                                if (selected) {
+                                  _recurrenceWeekdays.add(wd);
+                                } else {
+                                  _recurrenceWeekdays.remove(wd);
+                                }
+                              });
+                            },
+                          ),
+                      ],
+                    ),
+                    if (_recurrenceWeekdays.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          LiquidGlassPillButton(
+                            label: 'Always (Ongoing)',
+                            selected: _recurrenceUntil == null,
+                            accentColor: AppColors.liveEmerald,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            onTap: () =>
+                                setState(() => _recurrenceUntil = null),
+                          ),
+                          LiquidGlassPillButton(
+                            label: _recurrenceUntil == null
+                                ? 'Set End Date'
+                                : 'Until ${DateFormat('MMM d, y').format(_recurrenceUntil!)}',
+                            selected: _recurrenceUntil != null,
+                            accentColor: accent,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _recurrenceUntil ??
+                                    _date.add(const Duration(days: 56)),
+                                firstDate: _date,
+                                lastDate: DateTime(2032),
+                              );
+                              if (picked != null) {
+                                setState(() => _recurrenceUntil = picked);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        'Speaking Club Session',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      subtitle: Text(
+                        'Highlights this session in the Speaking Clubs bar for assigning the responsible teacher.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      value: _isSpeakingClub,
+                      onChanged: (v) => setState(() => _isSpeakingClub = v),
+                    ),
+                    const SizedBox(height: 8),
+
                     // Teacher & Classroom Selectors
                     Row(
                       children: [
@@ -457,8 +620,10 @@ class _LessonFormDialogState extends ConsumerState<LessonFormDialog> {
                                 ? null
                                 : effectiveTeacherId,
                             isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Teacher *',
+                            decoration: InputDecoration(
+                              labelText: _isSpeakingClub
+                                  ? 'Responsible Teacher *'
+                                  : 'Teacher *',
                             ),
                             items: [
                               for (final t in teachers)
@@ -504,6 +669,39 @@ class _LessonFormDialogState extends ConsumerState<LessonFormDialog> {
                         ),
                       ],
                     ),
+                    if (_language == CourseLanguage.sharing ||
+                        _lessonType == LessonType.group) ...[
+                      const SizedBox(height: 14),
+                      Text(
+                        _language == CourseLanguage.sharing
+                            ? 'Additional Teachers / Hosts (Sharing allows multiple teachers)'
+                            : 'Additional Co-Teachers (Optional)',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final t in teachers)
+                            if (t.id != effectiveTeacherId)
+                              FilterChip(
+                                label: Text(t.fullName),
+                                selected: _coTeacherIds.contains(t.id),
+                                selectedColor: accent.withValues(alpha: 0.18),
+                                onSelected: (selected) {
+                                  setState(() {
+                                    if (selected) {
+                                      _coTeacherIds.add(t.id);
+                                    } else {
+                                      _coTeacherIds.remove(t.id);
+                                    }
+                                  });
+                                },
+                              ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 16),
 
                     // Assigned Students Selector
@@ -514,13 +712,14 @@ class _LessonFormDialogState extends ConsumerState<LessonFormDialog> {
                           style: Theme.of(context).textTheme.labelMedium,
                         ),
                         const Spacer(),
-                        FilterChip(
-                          label: Text('${_language.label} students only'),
-                          selected: _filterStudentsByLanguage,
-                          onSelected: (val) => setState(
-                            () => _filterStudentsByLanguage = val,
+                        if (_language != CourseLanguage.sharing)
+                          FilterChip(
+                            label: Text('${_language.label} students only'),
+                            selected: _filterStudentsByLanguage,
+                            onSelected: (val) => setState(
+                              () => _filterStudentsByLanguage = val,
+                            ),
                           ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -643,6 +842,11 @@ class _LessonFormDialogState extends ConsumerState<LessonFormDialog> {
         ),
       ),
     );
+  }
+
+  bool _matchesDays(Set<int> target) {
+    return _recurrenceWeekdays.length == target.length &&
+        _recurrenceWeekdays.containsAll(target);
   }
 
   Teacher? _pickDefaultTeacher(List<Teacher> teachers) {

@@ -3,8 +3,51 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:the_word/core/providers/app_providers.dart';
+import 'package:the_word/core/repositories/auth_repository.dart';
 import 'package:the_word/core/repositories/demo_realtime_repository.dart';
 import 'package:the_word/main.dart';
+
+class _SignedOutCloudAuthRepo implements AuthRepository {
+  @override
+  bool get isSignInRequired => true;
+
+  @override
+  Stream<AuthUser?> watchAuthState() => Stream.value(null);
+
+  @override
+  Future<void> signInWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) async {}
+
+  @override
+  Future<void> signInWithGoogle({bool requireStaff = false}) async {}
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  Stream<List<AllowedStaffEmail>> watchAllowedEmails() =>
+      Stream.value(const []);
+
+  @override
+  Future<void> addAllowedEmail(String email) async {}
+
+  @override
+  Future<void> removeAllowedEmail(String email) async {}
+}
+
+class _StudentSignedInAuthRepo extends _SignedOutCloudAuthRepo {
+  @override
+  Stream<AuthUser?> watchAuthState() => Stream.value(
+        const AuthUser(
+          uid: 'student-1',
+          email: 'student@gmail.com',
+          displayName: 'Alex Student',
+          role: UserRole.student,
+        ),
+      );
+}
 
 void main() {
   setUpAll(() {
@@ -50,17 +93,25 @@ void main() {
     await tester.tap(find.text('Day'));
     await tester.pumpAndSettle();
 
+    // Navigate to Groups
+    await tester.tap(find.text('Groups'));
+    await tester.pumpAndSettle();
+    expect(find.text('Study Groups (HSK & CEFR)'), findsOneWidget);
+    expect(find.text('HSK 1 — Foundations'), findsOneWidget);
+
     // Navigate to Teachers
     await tester.tap(find.text('Teachers'));
     await tester.pumpAndSettle();
     expect(find.text('Teachers Directory'), findsOneWidget);
-    expect(find.text('Mei Lin'), findsOneWidget);
+    expect(find.text('Sharllote'), findsOneWidget);
+    expect(find.text('Olga'), findsOneWidget);
 
     // Navigate to Classrooms
     await tester.tap(find.text('Classrooms'));
     await tester.pumpAndSettle();
     expect(find.text('Classrooms & Live Status'), findsOneWidget);
-    expect(find.text('Room 1 - Beijing'), findsOneWidget);
+    expect(find.text('Hall'), findsOneWidget);
+    expect(find.text('OldCenter'), findsOneWidget);
 
     // Navigate to Students & test quick +1 credit button
     await tester.tap(find.text('Students'));
@@ -72,6 +123,23 @@ void main() {
     expect(plusButtons, findsWidgets);
     await tester.tap(plusButtons.first);
     await tester.pumpAndSettle();
+
+    // Navigate to Finance
+    await tester.tap(find.text('Finance'));
+    await tester.pumpAndSettle();
+    expect(find.text('Finance, Payroll & Exports'), findsOneWidget);
+    expect(find.text('Record Payment'), findsOneWidget);
+
+    // Navigate to Leads
+    await tester.tap(find.text('Leads'));
+    await tester.pumpAndSettle();
+    expect(find.text('Trial Leads & Student Requests'), findsOneWidget);
+
+    // Navigate to Updates
+    await tester.tap(find.text('Updates'));
+    await tester.pumpAndSettle();
+    expect(find.text('App Updates & Center Activity Log'), findsOneWidget);
+    expect(find.text("What's New in The Word"), findsOneWidget);
 
     // Toggle Dark Mode
     await tester.tap(find.text('Pearl Light'));
@@ -97,11 +165,15 @@ void main() {
     expect(find.text('The Word'), findsOneWidget);
     expect(find.text('Live Master Schedule'), findsOneWidget);
     expect(find.text('Schedule'), findsOneWidget);
-    expect(find.text('Teachers'), findsOneWidget);
-    expect(find.text('Classrooms'), findsOneWidget);
+    expect(find.text('Groups'), findsOneWidget);
+    expect(find.text('Finance'), findsOneWidget);
     expect(find.text('Students'), findsOneWidget);
+    expect(find.text('More'), findsOneWidget);
 
-    // Switch to Teachers on mobile
+    // Open More sheet on mobile and navigate to Teachers
+    await tester.tap(find.text('More'));
+    await tester.pumpAndSettle();
+    expect(find.text('More Sections'), findsOneWidget);
     await tester.tap(find.text('Teachers'));
     await tester.pumpAndSettle();
     expect(find.text('Teachers Directory'), findsOneWidget);
@@ -185,6 +257,73 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Closed Sign-In screen gates access when Cloud auth is required',
+      (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repo = DemoRealtimeRepository(
+      referenceNow: DateTime(2026, 11, 25, 12, 30),
+    );
+    addTearDown(repo.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          dataRepositoryProvider.overrideWithValue(repo),
+          authRepositoryProvider.overrideWithValue(_SignedOutCloudAuthRepo()),
+          enableAmbientAnimationsProvider.overrideWithValue(false),
+          enableLiveClockTickerProvider.overrideWithValue(false),
+        ],
+        child: const TheWordApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Authorized Staff Only'), findsOneWidget);
+    expect(find.text('Welcome to The Word'), findsOneWidget);
+    expect(find.text('Sign in with Google'), findsOneWidget);
+    expect(find.text('Staff Sign In Only'), findsOneWidget);
+    expect(find.text('Live Master Schedule'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Student Portal lets student join HSK group and view homework',
+      (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repo = DemoRealtimeRepository(
+      referenceNow: DateTime(2026, 11, 25, 12, 30),
+    );
+    addTearDown(repo.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          dataRepositoryProvider.overrideWithValue(repo),
+          authRepositoryProvider.overrideWithValue(_StudentSignedInAuthRepo()),
+          enableAmbientAnimationsProvider.overrideWithValue(false),
+          enableLiveClockTickerProvider.overrideWithValue(false),
+        ],
+        child: const TheWordApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('The Word • Student Portal'), findsOneWidget);
+    expect(find.text('HSK 1 — Foundations'), findsOneWidget);
+
+    await tester.tap(find.text('HSK 1 — Foundations'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Joined ✓'), findsOneWidget);
+    expect(find.text('HSK 1 Unit 3 Tone Drills & Audio'), findsOneWidget);
+    expect(find.text('Submit Answer / Link'), findsWidgets);
+    expect(find.text('Request Change'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
