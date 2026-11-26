@@ -693,7 +693,7 @@ class FirestoreRepository implements DataRepository {
       final metaSnap = await _metaDoc.get();
       final schemaVersion =
           (metaSnap.data()?['schemaVersion'] as num?)?.toInt() ?? 0;
-      if (!force && metaSnap.exists && schemaVersion >= 2) {
+      if (!force && metaSnap.exists && schemaVersion >= 3) {
         return;
       }
 
@@ -702,7 +702,7 @@ class FirestoreRepository implements DataRepository {
       final teachersSnap = await _teachersCol.get();
       final groupsSnap = await _groupsCol.get();
       final clubSnap =
-          await _lessonsCol.doc(CenterSeedData.clubChineseId).get();
+          await _lessonsCol.doc(CenterSeedData.clubKidsId).get();
 
       final batch = _db.batch();
 
@@ -774,7 +774,7 @@ class FirestoreRepository implements DataRepository {
 
       batch.set(_metaDoc, {
         'seeded': true,
-        'schemaVersion': 2,
+        'schemaVersion': 3,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 

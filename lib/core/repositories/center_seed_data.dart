@@ -9,6 +9,7 @@ import '../models/teacher.dart';
 /// Canonical classrooms, teachers, students, and recurring Saturday Speaking Clubs
 /// for "The Word" language center.
 abstract final class CenterSeedData {
+  static const String clubKidsId = 'club_sat_kids';
   static const String clubChineseId = 'club_sat_chinese';
   static const String clubEnglishId = 'club_sat_english';
 
@@ -199,11 +200,41 @@ abstract final class CenterSeedData {
   }
 
   /// Always-recurring Saturday Speaking Clubs:
+  /// - Saturday 9:30 AM: Saturday Kids Club (Hall)
   /// - Saturday 11:00 AM: Chinese Speaking Club (Hall)
   /// - Saturday 3:00 PM: English Speaking Club (Hall)
   static List<Lesson> buildSaturdayClubs(DateTime now) {
     final anchorSaturday = _mostRecentOrTodaySaturday(now);
     return [
+      Lesson(
+        id: clubKidsId,
+        title: 'Saturday Kids Club',
+        language: CourseLanguage.english,
+        lessonType: LessonType.group,
+        teacherId: 't_andrew',
+        classroomId: 'room_hall',
+        studentIds: const [],
+        startTime: DateTime(
+          anchorSaturday.year,
+          anchorSaturday.month,
+          anchorSaturday.day,
+          9,
+          30,
+        ),
+        endTime: DateTime(
+          anchorSaturday.year,
+          anchorSaturday.month,
+          anchorSaturday.day,
+          11,
+          0,
+        ),
+        status: LessonStatus.scheduled,
+        notes: 'Weekly Saturday 09:30 Kids Club — games, speaking & fun activities.',
+        createdAt: anchorSaturday,
+        recurrenceWeekdays: const [DateTime.saturday],
+        recurrenceUntil: null,
+        isSpeakingClub: true,
+      ),
       Lesson(
         id: clubChineseId,
         title: 'Chinese Speaking Club',

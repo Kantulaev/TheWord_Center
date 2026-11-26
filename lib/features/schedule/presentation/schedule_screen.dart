@@ -443,47 +443,30 @@ class _SaturdayClubsStrip extends ConsumerWidget {
           const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
-              final twoCols = constraints.maxWidth >= 680 && clubs.length >= 2;
-              if (!twoCols) {
-                return Column(
-                  children: [
-                    for (int i = 0; i < clubs.length; i++) ...[
-                      _ClubCard(
-                        club: clubs[i],
-                        roomName: classrooms[clubs[i].classroomId]?.name ?? 'Hall',
-                        teachers: teachers,
-                        validTeacherIds: teacherIds,
-                        onInspect: () => onInspectClub(clubs[i]),
-                        onAssignResponsible: (teacherId) async {
-                          await ref.read(dataRepositoryProvider).upsertLesson(
-                                clubs[i].copyWith(teacherId: teacherId),
-                              );
-                        },
-                      ),
-                      if (i < clubs.length - 1) const SizedBox(height: 10),
-                    ],
-                  ],
-                );
-              }
-              return Row(
+              final width = constraints.maxWidth;
+              final cols = width >= 1060 ? 3 : (width >= 660 ? 2 : 1);
+              const gap = 12.0;
+              final itemWidth = (width - gap * (cols - 1)) / cols;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
                 children: [
-                  for (int i = 0; i < clubs.length; i++) ...[
-                    Expanded(
+                  for (final club in clubs)
+                    SizedBox(
+                      width: cols == 1 ? width : itemWidth,
                       child: _ClubCard(
-                        club: clubs[i],
-                        roomName: classrooms[clubs[i].classroomId]?.name ?? 'Hall',
+                        club: club,
+                        roomName: classrooms[club.classroomId]?.name ?? 'Hall',
                         teachers: teachers,
                         validTeacherIds: teacherIds,
-                        onInspect: () => onInspectClub(clubs[i]),
+                        onInspect: () => onInspectClub(club),
                         onAssignResponsible: (teacherId) async {
                           await ref.read(dataRepositoryProvider).upsertLesson(
-                                clubs[i].copyWith(teacherId: teacherId),
+                                club.copyWith(teacherId: teacherId),
                               );
                         },
                       ),
                     ),
-                    if (i < clubs.length - 1) const SizedBox(width: 12),
-                  ],
                 ],
               );
             },
