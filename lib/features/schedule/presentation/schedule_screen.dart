@@ -10,6 +10,7 @@ import '../../../core/models/teacher.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/reminder_helper.dart';
+import '../../../shared/widgets/center_action_buttons.dart';
 import '../../../shared/widgets/confirm_delete_dialog.dart';
 import '../../../shared/widgets/language_badge.dart';
 import '../../../shared/widgets/liquid_glass_container.dart';
@@ -173,22 +174,18 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                 runSpacing: 6,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  GlassInfoTag(
-                    icon: CupertinoIcons.phone_fill,
-                    label: CenterInfo.primaryPhone,
+                  const PhoneCallBadgeButton(
+                    phoneDisplay: CenterInfo.primaryPhone,
+                    phoneTel: CenterInfo.primaryPhoneTel,
                   ),
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                    ),
+                  WhatsAppBadgeButton(
                     onPressed: () => ReminderHelper.openWhatsApp(
                       context,
                       phone: CenterInfo.whatsappPhone,
                       message: 'Hello The Word Language Center!',
                     ),
-                    icon: const Icon(CupertinoIcons.chat_bubble_fill, size: 14),
-                    label: const Text('WhatsApp'),
                   ),
+                  const TwoGisRouteButton(),
                 ],
               ),
             ],

@@ -7,6 +7,9 @@ import '../../../core/providers/app_providers.dart';
 import '../../../core/repositories/auth_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/glass_background.dart';
+import '../../../core/utils/reminder_helper.dart';
+import '../../../shared/widgets/appearance_settings_dialog.dart';
+import '../../../shared/widgets/center_action_buttons.dart';
 import '../../../shared/widgets/language_badge.dart';
 import '../../../shared/widgets/liquid_glass_container.dart';
 
@@ -63,12 +66,23 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               Positioned(
                 top: 16,
                 right: 16,
-                child: LiquidGlassPillButton(
-                  label: isDark ? 'Dark' : 'Light',
-                  icon: isDark
-                      ? CupertinoIcons.moon_stars_fill
-                      : CupertinoIcons.sun_max_fill,
-                  onTap: () => ref.read(themeModeProvider.notifier).toggle(),
+                child: Wrap(
+                  spacing: 8,
+                  children: [
+                    LiquidGlassPillButton(
+                      label: 'Display & Font',
+                      icon: CupertinoIcons.textformat_size,
+                      onTap: () => showAppearanceSettingsModal(context),
+                    ),
+                    LiquidGlassPillButton(
+                      label: isDark ? 'Dark' : 'Light',
+                      icon: isDark
+                          ? CupertinoIcons.moon_stars_fill
+                          : CupertinoIcons.sun_max_fill,
+                      onTap: () =>
+                          ref.read(themeModeProvider.notifier).toggle(),
+                    ),
+                  ],
                 ),
               ),
               Center(
@@ -257,11 +271,31 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                                   textAlign: TextAlign.center,
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${CenterInfo.primaryPhone} • ${CenterInfo.secondaryPhone}',
-                                  textAlign: TextAlign.center,
-                                  style: Theme.of(context).textTheme.bodySmall,
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  alignment: WrapAlignment.center,
+                                  children: [
+                                    const PhoneCallBadgeButton(
+                                      phoneDisplay: CenterInfo.primaryPhone,
+                                      phoneTel: CenterInfo.primaryPhoneTel,
+                                    ),
+                                    const PhoneCallBadgeButton(
+                                      phoneDisplay: CenterInfo.secondaryPhone,
+                                      phoneTel: CenterInfo.secondaryPhoneTel,
+                                    ),
+                                    WhatsAppBadgeButton(
+                                      onPressed: () =>
+                                          ReminderHelper.openWhatsApp(
+                                        context,
+                                        phone: CenterInfo.whatsappPhone,
+                                        message:
+                                            'Hello The Word Language Center!',
+                                      ),
+                                    ),
+                                    const TwoGisRouteButton(),
+                                  ],
                                 ),
                               ],
                             ),

@@ -7,6 +7,7 @@ import 'package:the_word/core/models/study_group.dart';
 import 'package:the_word/core/providers/app_providers.dart';
 import 'package:the_word/core/repositories/auth_repository.dart';
 import 'package:the_word/core/repositories/demo_realtime_repository.dart';
+import 'package:the_word/core/utils/local_prefs.dart';
 import 'package:the_word/main.dart';
 
 class _SignedOutCloudAuthRepo implements AuthRepository {
@@ -54,6 +55,12 @@ class _StudentSignedInAuthRepo extends _SignedOutCloudAuthRepo {
 void main() {
   setUpAll(() {
     GoogleFonts.config.allowRuntimeFetching = false;
+  });
+
+  setUp(() {
+    writeLocalPref('the_word_theme_mode', 'dark');
+    writeLocalPref('the_word_font_scale', '1.00');
+    writeLocalPref('the_word_portal_locale', 'en');
   });
 
   Widget buildTestApp(DemoRealtimeRepository repo) {
@@ -143,10 +150,20 @@ void main() {
     expect(find.text('App Updates & Center Activity Log'), findsOneWidget);
     expect(find.text("What's New in The Word"), findsOneWidget);
 
-    // Toggle Dark Mode
-    await tester.tap(find.text('Pearl Light'));
-    await tester.pumpAndSettle();
+    // Default theme is Obsidian Dark; toggle to Pearl Light
     expect(find.text('Obsidian Dark'), findsOneWidget);
+    await tester.tap(find.text('Obsidian Dark'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pearl Light'), findsOneWidget);
+
+    // Open Display & Font settings and test font scale switching without overflow
+    await tester.tap(find.text('Display & Font'));
+    await tester.pumpAndSettle();
+    expect(find.text('115% Large'), findsOneWidget);
+    await tester.tap(find.text('115% Large'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
   });
@@ -335,6 +352,8 @@ void main() {
 
     expect(find.text('The Word • Student Portal'), findsOneWidget);
     expect(find.text('Ogonbaeva 222, Bishkek, Kyrgyzstan, 720000 (Near Victory Business Center (280 m) & Detsky Mir (3 min))'), findsOneWidget);
+    expect(find.text('2GIS Route'), findsOneWidget);
+    expect(find.text('+996 703 870 008'), findsOneWidget);
     expect(find.text('HSK 1 — Foundations'), findsOneWidget);
     expect(find.text('Private Staff Sharing'), findsNothing);
 
@@ -351,6 +370,21 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Request Change'), findsOneWidget);
+
+    // Scroll back up to top and verify 6-language switching (e.g. EN -> RU -> EN)
+    await tester.scrollUntilVisible(
+      find.text('EN'),
+      -250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('EN'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Русский'));
+    await tester.pumpAndSettle();
+    expect(find.text('The Word • Кабинет ученика'), findsOneWidget);
+    expect(find.text('Маршрут 2ГИС'), findsOneWidget);
+
     expect(tester.takeException(), isNull);
   });
 }

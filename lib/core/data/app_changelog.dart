@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-const String kCurrentAppVersion = '1.5.0';
+const String kCurrentAppVersion = '1.6.0';
 
 enum ReleaseChangeType { newFeature, improved, fixed }
 
@@ -34,6 +34,30 @@ class AppReleaseNote {
 
 /// Official in-app changelog displayed to teachers & staff under "What's New".
 const List<AppReleaseNote> kAppChangelog = [
+  AppReleaseNote(
+    version: '1.6.0',
+    dateLabel: 'Nov 26, 2026',
+    title: '6-Language Student Portal, Accessibility Fonts, Dark Default & 2GIS',
+    summary:
+        'Added green WhatsApp & tap-to-call phone buttons, 2GIS Bishkek building route launcher, 6-language extensible Student Portal localization, global text scaling, and Dark Mode by default.',
+    highlights: [
+      ReleaseHighlight(
+        type: ReleaseChangeType.newFeature,
+        text:
+            'Student Portal 6 Languages: English, Русский, Кыргызча, Қазақша, Oʻzbekcha, and 中文 with clean key-map extensibility for adding future languages.',
+      ),
+      ReleaseHighlight(
+        type: ReleaseChangeType.newFeature,
+        text:
+            'Accessibility Text Size & Default Dark Theme: configurable 100%–145% global font scaling and Dark/Light theme switcher saved locally.',
+      ),
+      ReleaseHighlight(
+        type: ReleaseChangeType.newFeature,
+        text:
+            'Direct Center Actions: green WhatsApp icon buttons, tap-to-dial phone numbers, and 1-tap 2GIS directions to Ogonbaeva 222.',
+      ),
+    ],
+  ),
   AppReleaseNote(
     version: '1.5.0',
     dateLabel: 'Nov 26, 2026',

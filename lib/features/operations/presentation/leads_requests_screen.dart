@@ -10,6 +10,7 @@ import '../../../core/models/student.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/reminder_helper.dart';
+import '../../../shared/widgets/center_action_buttons.dart';
 import '../../../shared/widgets/confirm_delete_dialog.dart';
 import '../../../shared/widgets/language_badge.dart';
 import '../../../shared/widgets/liquid_glass_container.dart';
@@ -597,17 +598,12 @@ class _TrialLeadCard extends StatelessWidget {
                   ),
                 ),
               ),
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                ),
+              WhatsAppBadgeButton(
                 onPressed: () => ReminderHelper.openWhatsApp(
                   context,
                   phone: lead.phone,
                   message: msg,
                 ),
-                icon: const Icon(CupertinoIcons.chat_bubble_fill, size: 14),
-                label: const Text('WhatsApp'),
               ),
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../features/student_portal/l10n/student_portal_strings.dart';
 import '../models/classroom.dart';
 import '../models/homework.dart';
 import '../models/language_type.dart';
@@ -14,6 +15,7 @@ import '../models/teacher.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/data_repository.dart';
 import '../repositories/demo_realtime_repository.dart';
+import '../utils/local_prefs.dart';
 
 enum AppTab {
   schedule('Schedule'),
@@ -194,18 +196,71 @@ final liveClockProvider = StreamProvider<DateTime>((ref) {
 // ---------------------------------------------------------------------------
 
 class ThemeModeNotifier extends Notifier<ThemeMode> {
-  @override
-  ThemeMode build() => ThemeMode.light;
+  static const _prefKey = 'the_word_theme_mode';
 
-  void toggle() {
-    state = state == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+  @override
+  ThemeMode build() {
+    final saved = readLocalPref(_prefKey);
+    if (saved == 'light') return ThemeMode.light;
+    return ThemeMode.dark;
   }
 
-  void setMode(ThemeMode mode) => state = mode;
+  void toggle() {
+    setMode(state == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark);
+  }
+
+  void setMode(ThemeMode mode) {
+    state = mode;
+    writeLocalPref(_prefKey, mode == ThemeMode.light ? 'light' : 'dark');
+  }
 }
 
 final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(
   ThemeModeNotifier.new,
+);
+
+class FontScaleNotifier extends Notifier<double> {
+  static const _prefKey = 'the_word_font_scale';
+  static const List<double> presets = [1.0, 1.15, 1.30, 1.45];
+
+  @override
+  double build() {
+    final raw = readLocalPref(_prefKey);
+    final parsed = raw != null ? double.tryParse(raw) : null;
+    if (parsed != null && parsed >= 0.85 && parsed <= 1.6) {
+      return parsed;
+    }
+    return 1.0;
+  }
+
+  void setScale(double scale) {
+    final clamped = scale.clamp(0.9, 1.5);
+    state = clamped;
+    writeLocalPref(_prefKey, clamped.toStringAsFixed(2));
+  }
+}
+
+final fontScaleProvider = NotifierProvider<FontScaleNotifier, double>(
+  FontScaleNotifier.new,
+);
+
+class PortalLocaleNotifier extends Notifier<PortalLocale> {
+  static const _prefKey = 'the_word_portal_locale';
+
+  @override
+  PortalLocale build() {
+    return PortalLocale.fromCode(readLocalPref(_prefKey));
+  }
+
+  void setLocale(PortalLocale locale) {
+    state = locale;
+    writeLocalPref(_prefKey, locale.code);
+  }
+}
+
+final portalLocaleProvider =
+    NotifierProvider<PortalLocaleNotifier, PortalLocale>(
+  PortalLocaleNotifier.new,
 );
 
 class NavigationTabNotifier extends Notifier<AppTab> {

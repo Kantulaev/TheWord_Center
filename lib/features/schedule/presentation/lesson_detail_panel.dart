@@ -10,6 +10,7 @@ import '../../../core/models/operations_models.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/reminder_helper.dart';
+import '../../../shared/widgets/center_action_buttons.dart';
 import '../../../shared/widgets/confirm_delete_dialog.dart';
 import '../../../shared/widgets/entity_avatar.dart';
 import '../../../shared/widgets/language_badge.dart';
@@ -398,20 +399,12 @@ class LessonDetailPanel extends ConsumerWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                    ),
+                  WhatsAppBadgeButton(
                     onPressed: () => ReminderHelper.openWhatsApp(
                       context,
                       phone: firstPhone,
                       message: reminderMsg,
                     ),
-                    icon: const Icon(
-                      CupertinoIcons.chat_bubble_fill,
-                      size: 14,
-                    ),
-                    label: const Text('WhatsApp'),
                   ),
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(

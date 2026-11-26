@@ -47,4 +47,40 @@ abstract final class ReminderHelper {
       }
     }
   }
+
+  static Future<void> openPhoneDialer(
+    BuildContext context,
+    String rawPhone,
+  ) async {
+    final cleaned = _cleanPhone(rawPhone);
+    if (cleaned.isEmpty) return;
+    final uri = Uri(scheme: 'tel', path: cleaned);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (context.mounted) {
+        await Clipboard.setData(ClipboardData(text: rawPhone));
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Phone number copied: $rawPhone')),
+        );
+      }
+    }
+  }
+
+  static Future<void> openExternalUrl(
+    BuildContext context,
+    String url, {
+    String? copiedNotice,
+  }) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (context.mounted) {
+        await Clipboard.setData(ClipboardData(text: url));
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(copiedNotice ?? 'Link copied: $url')),
+        );
+      }
+    }
+  }
 }

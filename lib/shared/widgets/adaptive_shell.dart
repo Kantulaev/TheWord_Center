@@ -23,6 +23,7 @@ import '../../features/students/presentation/student_detail_panel.dart';
 import '../../features/students/presentation/students_screen.dart';
 import '../../features/teachers/presentation/teacher_detail_panel.dart';
 import '../../features/teachers/presentation/teachers_screen.dart';
+import 'appearance_settings_dialog.dart';
 import 'language_badge.dart';
 import 'liquid_glass_container.dart';
 
@@ -560,6 +561,39 @@ class _DesktopGlassSidebar extends StatelessWidget {
             borderRadius: 18,
             blurSigma: 12,
             elevation: 0.25,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            onTap: () => showAppearanceSettingsModal(
+              context,
+              showLanguagePicker: false,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  CupertinoIcons.textformat_size,
+                  size: 18,
+                  color: AppColors.englishAccent(context),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Display & Font',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                Text(
+                  'Size',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppColors.textMuted(context),
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          LiquidGlassContainer(
+            borderRadius: 18,
+            blurSigma: 12,
+            elevation: 0.25,
             tintColor: isCloudSync
                 ? AppColors.liveEmerald
                 : AppColors.englishAccent(context),
@@ -806,6 +840,14 @@ class _TabletGlassRail extends StatelessWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          IconButton(
+                            tooltip: 'Display & Font Size',
+                            onPressed: () => showAppearanceSettingsModal(
+                              context,
+                              showLanguagePicker: false,
+                            ),
+                            icon: const Icon(CupertinoIcons.textformat_size),
+                          ),
                           IconButton(
                             tooltip: 'Toggle Light/Dark Mode',
                             onPressed: onToggleTheme,
@@ -1119,6 +1161,21 @@ class _MobileFloatingNavBar extends StatelessWidget {
                   },
                 ),
               ],
+              const Divider(height: 16),
+              ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                leading: const Icon(CupertinoIcons.textformat_size),
+                title: const Text('Display & Font Size'),
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  showAppearanceSettingsModal(
+                    context,
+                    showLanguagePicker: false,
+                  );
+                },
+              ),
             ],
           ),
         ),

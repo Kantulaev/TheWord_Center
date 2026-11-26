@@ -11,6 +11,7 @@ import 'package:the_word/core/models/study_group.dart';
 import 'package:the_word/core/models/teacher.dart';
 import 'package:the_word/core/repositories/demo_realtime_repository.dart';
 import 'package:the_word/core/utils/csv_exporter.dart';
+import 'package:the_word/features/student_portal/l10n/student_portal_strings.dart';
 
 void main() {
   group('ScheduleConflictDetector', () {
@@ -620,6 +621,42 @@ void main() {
 
       // Student homeworks returns empty with zero reads when no group joined
       expect(await repo.watchHomeworksForGroups(const []).first, isEmpty);
+    });
+
+    test('StudentPortalL10n supports all 6 languages & localized schedules', () {
+      expect(PortalLocale.values.length, 6);
+      final group = StudyGroup(
+        id: 'g1',
+        name: 'HSK 1',
+        language: CourseLanguage.chinese,
+        level: 'HSK 1',
+        teacherId: 't1',
+        classroomId: 'r1',
+        scheduleWeekdays: const [DateTime.monday, DateTime.friday],
+        startHour: 10,
+        startMinute: 0,
+        createdAt: DateTime(2026, 11, 26),
+      );
+
+      for (final loc in PortalLocale.values) {
+        final l10n = StudentPortalL10n(loc);
+        expect(l10n.text('portalTitle'), isNotEmpty);
+        expect(l10n.text('creditsLeft', {'n': '5'}), contains('5'));
+        expect(l10n.formatSchedule(group), contains('10:00'));
+      }
+
+      expect(
+        const StudentPortalL10n(PortalLocale.ru).text('portalTitle'),
+        'The Word • Кабинет ученика',
+      );
+      expect(
+        const StudentPortalL10n(PortalLocale.zh).formatSchedule(group),
+        contains('周一'),
+      );
+      expect(
+        CenterInfo.twoGisUrl,
+        contains('70000001036390791'),
+      );
     });
   });
 }

@@ -15,6 +15,7 @@ import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/csv_exporter.dart';
 import '../../../core/utils/reminder_helper.dart';
+import '../../../shared/widgets/center_action_buttons.dart';
 import '../../../shared/widgets/confirm_delete_dialog.dart';
 import '../../../shared/widgets/entity_avatar.dart';
 import '../../../shared/widgets/language_badge.dart';
@@ -776,17 +777,12 @@ class _LowCreditAlertRow extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                ),
+              WhatsAppBadgeButton(
                 onPressed: () => ReminderHelper.openWhatsApp(
                   context,
                   phone: phone,
                   message: message,
                 ),
-                icon: const Icon(CupertinoIcons.chat_bubble_fill, size: 14),
-                label: const Text('WhatsApp'),
               ),
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(

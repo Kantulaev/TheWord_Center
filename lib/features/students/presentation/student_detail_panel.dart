@@ -10,6 +10,7 @@ import '../../../core/models/student.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/reminder_helper.dart';
+import '../../../shared/widgets/center_action_buttons.dart';
 import '../../../shared/widgets/confirm_delete_dialog.dart';
 import '../../../shared/widgets/entity_avatar.dart';
 import '../../../shared/widgets/language_badge.dart';
@@ -224,19 +225,9 @@ class StudentDetailPanel extends ConsumerWidget {
                 ),
                 if (student.phone.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(
-                        CupertinoIcons.phone,
-                        size: 15,
-                        color: AppColors.textMuted(context),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        student.phone,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
+                  PhoneCallBadgeButton(
+                    phoneDisplay: student.phone,
+                    phoneTel: student.phone,
                   ),
                 ],
                 if (student.email.isNotEmpty) ...[
@@ -263,21 +254,13 @@ class StudentDetailPanel extends ConsumerWidget {
                   spacing: 8,
                   runSpacing: 6,
                   children: [
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                      ),
+                    WhatsAppBadgeButton(
                       onPressed: () => ReminderHelper.openWhatsApp(
                         context,
                         phone: student.phone,
                         message:
                             'Hello ${student.fullName}! Reminder from The Word Center: you currently have ${student.remainingCredits} lesson credit(s) left in ${student.targetLanguage.label} (${student.proficiencyLevel}).',
                       ),
-                      icon: const Icon(
-                        CupertinoIcons.chat_bubble_fill,
-                        size: 14,
-                      ),
-                      label: const Text('WhatsApp'),
                     ),
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(

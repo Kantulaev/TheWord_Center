@@ -40,8 +40,12 @@ abstract final class CenterInfo {
   static const String address = 'Ogonbaeva 222, Bishkek, Kyrgyzstan, 720000';
   static const String landmarks = 'Near Victory Business Center (280 m) & Detsky Mir (3 min)';
   static const String primaryPhone = '+996 703 870 008';
+  static const String primaryPhoneTel = '+996703870008';
   static const String secondaryPhone = '+996 702 825 925';
+  static const String secondaryPhoneTel = '+996702825925';
   static const String whatsappPhone = '996703870008';
+  static const String twoGisUrl =
+      'https://2gis.kg/bishkek/geo/70000001036390791?inv_by=e6fbb33a54b84ff9a1d2e80771a0bbfb&inv_ts=1795672250';
 
   static const Map<int, WeekdayHours> schedule = {
     DateTime.monday: WeekdayHours(
