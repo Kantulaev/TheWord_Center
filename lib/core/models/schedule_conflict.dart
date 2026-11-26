@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 
+import '../data/center_info.dart';
 import 'classroom.dart';
 import 'language_type.dart';
 import 'lesson.dart';
@@ -88,6 +89,35 @@ abstract final class ScheduleConflictDetector {
       warnings.add(
         '${classroom.name} seats ${classroom.capacity}, but ${candidate.studentIds.length} students are selected.',
       );
+    }
+
+    final checkDays = candidate.isRecurring
+        ? candidate.recurrenceWeekdays
+        : [candidate.startTime.weekday];
+    for (final wd in checkDays) {
+      final probeDate = DateTime(2026, 11, 23 + (wd - DateTime.monday));
+      final probeStart = DateTime(
+        probeDate.year,
+        probeDate.month,
+        probeDate.day,
+        candidate.startTime.hour,
+        candidate.startTime.minute,
+      );
+      final probeEnd = DateTime(
+        probeDate.year,
+        probeDate.month,
+        probeDate.day,
+        candidate.endTime.hour,
+        candidate.endTime.minute,
+      );
+      final hours = CenterInfo.hoursForDate(probeStart);
+      if (!hours.isOpen) {
+        warnings.add('The Word Center is closed on Sundays (${hours.shortDay}).');
+      } else if (!CenterInfo.isWithinWorkingHours(probeStart, probeEnd)) {
+        warnings.add(
+          'Outside ${hours.shortDay} operating hours (${hours.displayRange}).',
+        );
+      }
     }
 
     if (candidate.status == LessonStatus.canceled) {

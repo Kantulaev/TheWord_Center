@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../core/data/center_info.dart';
 import '../../../core/models/classroom.dart';
 import '../../../core/models/language_type.dart';
 import '../../../core/models/lesson.dart';
@@ -88,18 +89,20 @@ class _DayTimetableViewState extends ConsumerState<DayTimetableView> {
     final isToday = widget.selectedDate.year == now.year &&
         widget.selectedDate.month == now.month &&
         widget.selectedDate.day == now.day;
+    final dayHours = CenterInfo.hoursForDate(widget.selectedDate);
 
-    // Expand hour range dynamically if any lesson or current time falls outside 08:00-22:00.
+    // Match official center operating window (08:00–20:00 covers 08:30 opening through 19:00 close),
+    // automatically expanding only if an exception session extends earlier/later.
     var startHour = 8;
-    var endHour = 22;
+    var endHour = 20;
     for (final l in dayLessons) {
       startHour = math.min(startHour, l.startTime.hour);
       final endH = l.endTime.minute > 0 ? l.endTime.hour + 1 : l.endTime.hour;
       endHour = math.max(endHour, endH.clamp(1, 24));
     }
-    if (isToday) {
-      startHour = math.min(startHour, now.hour);
-      endHour = math.max(endHour, (now.hour + 1).clamp(1, 24));
+    if (isToday && dayHours.isOpen) {
+      startHour = math.min(startHour, now.hour.clamp(8, 20));
+      endHour = math.max(endHour, (now.hour + 1).clamp(8, 20));
     }
 
     const hourHeight = 82.0;
@@ -128,17 +131,60 @@ class _DayTimetableViewState extends ConsumerState<DayTimetableView> {
       }
     }
 
+    final gridStartMins = startHour * 60;
+    final gridEndMins = endHour * 60;
+    final openBeforeHeight = dayHours.isOpen
+        ? (((dayHours.openMinutes - gridStartMins) / 60.0) * hourHeight)
+            .clamp(0.0, gridHeight)
+        : gridHeight;
+    final closeAfterTop = dayHours.isOpen
+        ? (((dayHours.closeMinutes - gridStartMins) / 60.0) * hourHeight)
+            .clamp(0.0, gridHeight)
+        : gridHeight;
+    final closeAfterHeight =
+        dayHours.isOpen ? math.max(0.0, gridHeight - closeAfterTop) : 0.0;
+
     return LiquidGlassContainer(
       borderRadius: 24,
       blurSigma: 20,
       elevation: 0.7,
       padding: const EdgeInsets.all(12),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SizedBox(
-          width: totalGridWidth,
-          child: Column(
-            children: [
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 2, 6, 10),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 6,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                StatusBadge(
+                  label: dayHours.isOpen
+                      ? '${dayHours.shortDay} Operating Hours: ${dayHours.displayRange}'
+                      : '${dayHours.shortDay}: Center Closed (Day Off)',
+                  color: dayHours.isOpen
+                      ? AppColors.liveEmerald
+                      : AppColors.warningAmber,
+                  icon: dayHours.isOpen
+                      ? CupertinoIcons.clock_fill
+                      : CupertinoIcons.moon_zzz_fill,
+                  compact: true,
+                ),
+                Text(
+                  CenterInfo.address,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: totalGridWidth,
+              child: Column(
+                children: [
               // Sticky Classroom Header Row
               Row(
                 children: [
@@ -223,6 +269,38 @@ class _DayTimetableViewState extends ConsumerState<DayTimetableView> {
                                   ),
                                 ),
                               ],
+                            ),
+                          ),
+
+                        // Off-hours / Closed-hours subtle overlay
+                        if (openBeforeHeight > 0)
+                          Positioned(
+                            top: 0,
+                            left: timeColumnWidth,
+                            right: 0,
+                            height: openBeforeHeight,
+                            child: IgnorePointer(
+                              child: Container(
+                                color: (isDark
+                                        ? Colors.black
+                                        : AppColors.completedSlate)
+                                    .withValues(alpha: dayHours.isOpen ? 0.06 : 0.12),
+                              ),
+                            ),
+                          ),
+                        if (closeAfterHeight > 0 && gridEndMins > dayHours.closeMinutes)
+                          Positioned(
+                            top: closeAfterTop,
+                            left: timeColumnWidth,
+                            right: 0,
+                            height: closeAfterHeight,
+                            child: IgnorePointer(
+                              child: Container(
+                                color: (isDark
+                                        ? Colors.black
+                                        : AppColors.completedSlate)
+                                    .withValues(alpha: 0.06),
+                              ),
                             ),
                           ),
 
@@ -364,6 +442,8 @@ class _DayTimetableViewState extends ConsumerState<DayTimetableView> {
             ],
           ),
         ),
+      ),
+        ],
       ),
     );
   }

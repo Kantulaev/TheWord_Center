@@ -314,8 +314,8 @@ abstract final class CenterSeedData {
           DateTime.wednesday,
           DateTime.friday,
         ],
-        startHour: 18,
-        startMinute: 0,
+        startHour: 17,
+        startMinute: 30,
         durationMinutes: 90,
         members: const [
           GroupMemberPayment(

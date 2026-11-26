@@ -7,6 +7,7 @@ import '../../../core/models/language_type.dart';
 import '../../../core/models/lesson.dart';
 import '../../../core/models/study_group.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/confirm_delete_dialog.dart';
 import '../../../shared/widgets/liquid_glass_container.dart';
 
@@ -155,18 +156,19 @@ class _GroupFormDialogState extends ConsumerState<GroupFormDialog> {
                     ),
                     const SizedBox(height: 14),
                     Text(
-                      'Language',
+                      'Category / Language',
                       style: Theme.of(context).textTheme.labelMedium,
                     ),
                     const SizedBox(height: 6),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
-                        for (final lang in const [
-                          CourseLanguage.chinese,
-                          CourseLanguage.english,
-                        ]) ...[
+                        for (final lang in CourseLanguage.values)
                           LiquidGlassPillButton(
-                            label: lang.label,
+                            label: lang == CourseLanguage.sharing
+                                ? 'Sharing (Staff Only)'
+                                : lang.label,
                             selected: _language == lang,
                             accentColor: lang.accentColor(context),
                             onTap: () => setState(() {
@@ -174,10 +176,37 @@ class _GroupFormDialogState extends ConsumerState<GroupFormDialog> {
                               _level = ProficiencyLevels.defaultFor(lang);
                             }),
                           ),
-                          const SizedBox(width: 8),
-                        ],
                       ],
                     ),
+                    if (_language == CourseLanguage.sharing) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          color: AppColors.sharingViolet.withValues(alpha: 0.12),
+                          border: Border.all(
+                            color: AppColors.sharingViolet.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              CupertinoIcons.lock_shield_fill,
+                              size: 16,
+                              color: AppColors.sharingViolet,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Private for teachers only: hidden from students in both the Student Portal and Firestore Security Rules.',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     Text(
                       'Level',

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:the_word/core/data/center_info.dart';
 import 'package:the_word/core/models/classroom.dart';
 import 'package:the_word/core/models/homework.dart';
 import 'package:the_word/core/models/language_type.dart';
@@ -6,6 +7,7 @@ import 'package:the_word/core/models/lesson.dart';
 import 'package:the_word/core/models/operations_models.dart';
 import 'package:the_word/core/models/schedule_conflict.dart';
 import 'package:the_word/core/models/student.dart';
+import 'package:the_word/core/models/study_group.dart';
 import 'package:the_word/core/models/teacher.dart';
 import 'package:the_word/core/repositories/demo_realtime_repository.dart';
 import 'package:the_word/core/utils/csv_exporter.dart';
@@ -498,6 +500,126 @@ void main() {
       final resolved = reqs.firstWhere((r) => r.id == 'req-1');
       expect(resolved.status, RequestStatus.approved);
       expect(resolved.staffNote, 'Moved to Saturday');
+    });
+  });
+
+  group('Security privacy & official center hours', () {
+    test('CenterInfo enforces MWF 08:30-19:00, TTS 09:00-18:00, Sun Closed', () {
+      final mon = DateTime(2026, 11, 23);
+      final tue = DateTime(2026, 11, 24);
+      final sun = DateTime(2026, 11, 29);
+
+      expect(CenterInfo.hoursForDate(mon).displayRange, '08:30–19:00');
+      expect(CenterInfo.hoursForDate(tue).displayRange, '09:00–18:00');
+      expect(CenterInfo.hoursForDate(sun).isOpen, isFalse);
+
+      expect(
+        CenterInfo.isWithinWorkingHours(
+          DateTime(2026, 11, 23, 8, 30),
+          DateTime(2026, 11, 23, 19, 0),
+        ),
+        isTrue,
+      );
+      expect(
+        CenterInfo.isWithinWorkingHours(
+          DateTime(2026, 11, 24, 17, 30),
+          DateTime(2026, 11, 24, 19, 0),
+        ),
+        isFalse,
+      );
+    });
+
+    test('ScheduleConflictDetector warns when booking on Sunday or off-hours', () {
+      final sunday = DateTime(2026, 11, 29, 12, 0);
+      final candidate = Lesson(
+        id: 'sun-lesson',
+        title: 'Sunday Check',
+        language: CourseLanguage.english,
+        lessonType: LessonType.oneOnOne,
+        teacherId: 't1',
+        classroomId: 'r1',
+        studentIds: const [],
+        startTime: sunday,
+        endTime: sunday.add(const Duration(hours: 1)),
+        createdAt: sunday,
+      );
+      final result = ScheduleConflictDetector.validate(
+        candidate: candidate,
+        existingLessons: const [],
+        teachersById: const {},
+        classroomsById: const {},
+        studentsById: const {},
+      );
+      expect(
+        result.softWarnings.any((w) => w.contains('closed on Sundays')),
+        isTrue,
+      );
+    });
+
+    test('Public student streams hide Sharing groups, member PII, and teacher rates',
+        () async {
+      final repo = DemoRealtimeRepository(
+        referenceNow: DateTime(2026, 11, 25, 12, 30),
+      );
+      addTearDown(repo.dispose);
+
+      // Add a staff-only Sharing group
+      await repo.upsertGroup(
+        StudyGroup(
+          id: 'grp_secret_sharing',
+          name: 'Private Teacher Sharing Club',
+          language: CourseLanguage.sharing,
+          level: 'All Levels',
+          teacherId: 't_sharllote',
+          classroomId: 'room_hall',
+          scheduleWeekdays: const [DateTime.friday],
+          startHour: 17,
+          startMinute: 0,
+          members: const [
+            GroupMemberPayment(
+              memberId: 's1',
+              fullName: 'Secret Student',
+              email: 'secret@example.com',
+              hasPaid: false,
+            ),
+          ],
+          notes: 'Internal staff sharing notes',
+          createdAt: DateTime(2026, 11, 26),
+        ),
+      );
+
+      final staffGroups = await repo.watchGroups().first;
+      expect(
+        staffGroups.any((g) => g.id == 'grp_secret_sharing'),
+        isTrue,
+      );
+
+      final studentVisibleGroups = await repo.watchPublicGroups().first;
+      expect(
+        studentVisibleGroups.any((g) => g.language == CourseLanguage.sharing),
+        isFalse,
+      );
+      expect(
+        studentVisibleGroups.every((g) => g.members.isEmpty && g.notes.isEmpty),
+        isTrue,
+      );
+
+      final publicTeachers = await repo.watchPublicTeachers().first;
+      expect(publicTeachers, isNotEmpty);
+      expect(
+        publicTeachers.every(
+          (t) =>
+              t.hourlyRate == 0 &&
+              t.clubRate == 0 &&
+              t.phone.isEmpty &&
+              t.email.isEmpty &&
+              t.notes.isEmpty,
+        ),
+        isTrue,
+      );
+
+      // Student homeworks returns empty with zero reads when no group joined
+      expect(await repo.watchHomeworksForGroups(const []).first, isEmpty);
     });
   });
 }

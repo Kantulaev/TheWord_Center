@@ -3,71 +3,129 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {
-      return request.auth != null;
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true;
     }
 
     function normalizedEmail() {
-      return request.auth.token.email;
+      return request.auth.token.email.lower();
     }
 
     function isAllowedStaff() {
       return isSignedIn()
-        && request.auth.token.email != null
         && exists(/databases/$(database)/documents/allowed_users/$(normalizedEmail()));
     }
 
-    // Staff whitelist: signed-in users can check their own email; staff can invite/revoke.
+    // Staff whitelist: signed-in users can ONLY check their own normalized doc;
+    // authorized staff can list, invite, and revoke colleagues.
     match /allowed_users/{email} {
       allow get: if isSignedIn() && normalizedEmail() == email;
       allow list, create, update, delete: if isAllowedStaff();
     }
 
-    // Student portal self-service profile.
+    // Student portal self-service profile (bounded size to prevent payload abuse).
     match /student_profiles/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isAllowedStaff());
-      allow create, update: if isSignedIn() && request.auth.uid == uid;
+      allow create, update: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.email == normalizedEmail()
+        && request.resource.data.selectedGroupIds is list
+        && request.resource.data.selectedGroupIds.size() <= 30;
       allow delete: if isAllowedStaff();
     }
 
-    // Study groups: signed-in students can view groups to join; staff manage members & payments.
+    // Public Study Groups metadata: strictly hides Sharing groups from students.
+    // Member emails & 12-lesson payments are stored separately in staff-only group_rosters.
     match /groups/{groupId} {
+      allow read: if isAllowedStaff()
+        || (isSignedIn() && resource.data.language != 'sharing');
+      allow write: if isAllowedStaff();
+    }
+
+    // Staff-only cohort payment roster & private group notes.
+    match /group_rosters/{groupId} {
+      allow read, write: if isAllowedStaff();
+    }
+
+    // Safe teacher display cards (no private phones, emails, or salary rates).
+    match /public_teachers/{teacherId} {
       allow read: if isSignedIn();
       allow write: if isAllowedStaff();
     }
 
-    // Homework assignments: students can read and update their own completion/submission.
-    match /homeworks/{hwId} {
+    // Classrooms metadata.
+    match /classrooms/{classroomId} {
       allow read: if isSignedIn();
-      allow create, delete: if isAllowedStaff();
-      allow update: if isAllowedStaff()
-        || (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['completedByUids', 'submissions']));
+      allow write: if isAllowedStaff();
     }
 
-    // Reschedule requests: students can create & read their own; staff can read/update/delete all.
+    // Homework assignments: students can view non-sharing homework and toggle
+    // ONLY their own UID in completedByUids.
+    match /homeworks/{hwId} {
+      allow read: if isAllowedStaff()
+        || (isSignedIn() && resource.data.language != 'sharing');
+      allow create, delete: if isAllowedStaff();
+      allow update: if isAllowedStaff()
+        || (isSignedIn()
+          && resource.data.language != 'sharing'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['completedByUids'])
+          && request.resource.data.completedByUids is list
+          && request.resource.data.completedByUids.toSet().difference(resource.data.completedByUids.toSet()).hasOnly([request.auth.uid])
+          && resource.data.completedByUids.toSet().difference(request.resource.data.completedByUids.toSet()).hasOnly([request.auth.uid]));
+    }
+
+    // Per-student homework submissions: isolated per document so students can NEVER
+    // view classmate answers or forge teacher feedback/review status.
+    match /homework_submissions/{subId} {
+      allow read: if isAllowedStaff()
+        || (isSignedIn() && resource.data.studentUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && request.resource.data.studentUid == request.auth.uid
+        && request.resource.data.studentEmail == normalizedEmail()
+        && request.resource.data.reviewed == false
+        && request.resource.data.teacherFeedback == '';
+      allow update: if isAllowedStaff()
+        || (isSignedIn()
+          && resource.data.studentUid == request.auth.uid
+          && request.resource.data.studentUid == request.auth.uid
+          && request.resource.data.studentEmail == resource.data.studentEmail
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answerOrLink', 'submittedAt', 'studentName']));
+      allow delete: if isAllowedStaff();
+    }
+
+    // Reschedule requests: student can create PENDING requests for self only and read own.
     match /reschedule_requests/{reqId} {
-      allow read: if isAllowedStaff() || (isSignedIn() && resource.data.studentUid == request.auth.uid);
-      allow create: if isSignedIn() && request.resource.data.studentUid == request.auth.uid;
+      allow read: if isAllowedStaff()
+        || (isSignedIn() && resource.data.studentUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && request.resource.data.studentUid == request.auth.uid
+        && request.resource.data.studentEmail == normalizedEmail()
+        && request.resource.data.status == 'pending'
+        && request.resource.data.staffNote == '';
       allow update, delete: if isAllowedStaff();
     }
 
-    // Schedule, teachers, classrooms: readable by signed-in users; writable by staff only.
-    match /{collection}/{docId} {
-      allow read: if isSignedIn()
-        && collection in ['lessons', 'teachers', 'classrooms'];
-      allow write: if isAllowedStaff()
-        && collection in ['lessons', 'teachers', 'classrooms'];
-    }
-
-    // Student roster: staff full access; student can read ONLY their own matching email record for HSK progress.
+    // Student roster: staff full access; student can read ONLY their own matching email record.
     match /students/{studentId} {
-      allow read: if isAllowedStaff() || (isSignedIn() && resource.data.email == normalizedEmail());
+      allow read: if isAllowedStaff()
+        || (isSignedIn() && resource.data.email == normalizedEmail());
       allow write: if isAllowedStaff();
     }
 
-    // Staff-only operational collections.
+    // Staff-only operational & sensitive collections (lessons, Sharing, teacher salaries, finance, logs).
     match /{collection}/{docId} {
       allow read, write: if isAllowedStaff()
-        && collection in ['center_config', 'attendance', 'payments', 'trial_leads', 'activity_logs'];
+        && collection in [
+          'lessons',
+          'teachers',
+          'center_config',
+          'attendance',
+          'payments',
+          'trial_leads',
+          'activity_logs'
+        ];
     }
   }
 }

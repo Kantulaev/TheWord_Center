@@ -7,6 +7,7 @@ import 'language_type.dart';
 @immutable
 class HomeworkSubmission {
   const HomeworkSubmission({
+    this.homeworkId = '',
     required this.studentUid,
     required this.studentName,
     required this.studentEmail,
@@ -16,6 +17,7 @@ class HomeworkSubmission {
     this.reviewed = false,
   });
 
+  final String homeworkId;
   final String studentUid;
   final String studentName;
   final String studentEmail;
@@ -24,7 +26,11 @@ class HomeworkSubmission {
   final String teacherFeedback;
   final bool reviewed;
 
+  static String docId(String homeworkId, String studentUid) =>
+      '${homeworkId}_$studentUid';
+
   HomeworkSubmission copyWith({
+    String? homeworkId,
     String? studentUid,
     String? studentName,
     String? studentEmail,
@@ -34,6 +40,7 @@ class HomeworkSubmission {
     bool? reviewed,
   }) {
     return HomeworkSubmission(
+      homeworkId: homeworkId ?? this.homeworkId,
       studentUid: studentUid ?? this.studentUid,
       studentName: studentName ?? this.studentName,
       studentEmail: studentEmail ?? this.studentEmail,
@@ -46,6 +53,7 @@ class HomeworkSubmission {
 
   Map<String, dynamic> toMap({bool useFirestoreTimestamp = false}) {
     return {
+      if (homeworkId.isNotEmpty) 'homeworkId': homeworkId,
       'studentUid': studentUid,
       'studentName': studentName,
       'studentEmail': studentEmail,
@@ -60,6 +68,7 @@ class HomeworkSubmission {
 
   factory HomeworkSubmission.fromMap(Map<String, dynamic> map) {
     return HomeworkSubmission(
+      homeworkId: map['homeworkId'] as String? ?? '',
       studentUid: map['studentUid'] as String? ?? '',
       studentName: map['studentName'] as String? ?? 'Student',
       studentEmail: map['studentEmail'] as String? ?? '',
@@ -75,6 +84,7 @@ class HomeworkSubmission {
       identical(this, other) ||
       other is HomeworkSubmission &&
           runtimeType == other.runtimeType &&
+          homeworkId == other.homeworkId &&
           studentUid == other.studentUid &&
           studentName == other.studentName &&
           studentEmail == other.studentEmail &&
@@ -85,6 +95,7 @@ class HomeworkSubmission {
 
   @override
   int get hashCode => Object.hash(
+        homeworkId,
         studentUid,
         studentName,
         studentEmail,
@@ -107,6 +118,7 @@ class HomeworkAssignment {
     required this.teacherId,
     required this.dueDate,
     required this.createdAt,
+    this.language = CourseLanguage.chinese,
     this.completedByUids = const [],
     this.submissions = const [],
   });
@@ -118,6 +130,7 @@ class HomeworkAssignment {
   final String teacherId;
   final DateTime dueDate;
   final DateTime createdAt;
+  final CourseLanguage language;
   final List<String> completedByUids;
   final List<HomeworkSubmission> submissions;
 
@@ -138,6 +151,7 @@ class HomeworkAssignment {
     String? teacherId,
     DateTime? dueDate,
     DateTime? createdAt,
+    CourseLanguage? language,
     List<String>? completedByUids,
     List<HomeworkSubmission>? submissions,
   }) {
@@ -149,6 +163,7 @@ class HomeworkAssignment {
       teacherId: teacherId ?? this.teacherId,
       dueDate: dueDate ?? this.dueDate,
       createdAt: createdAt ?? this.createdAt,
+      language: language ?? this.language,
       completedByUids: completedByUids ?? this.completedByUids,
       submissions: submissions ?? this.submissions,
     );
@@ -161,6 +176,7 @@ class HomeworkAssignment {
       'description': description,
       'groupId': groupId,
       'teacherId': teacherId,
+      'language': language.name,
       'dueDate': useFirestoreTimestamp
           ? Timestamp.fromDate(dueDate)
           : dueDate.toIso8601String(),
@@ -178,6 +194,7 @@ class HomeworkAssignment {
     Map<String, dynamic> map, {
     String? documentId,
   }) {
+    final hwId = documentId ?? (map['id'] as String? ?? '');
     final rawDone = map['completedByUids'];
     final done = rawDone is Iterable
         ? rawDone.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
@@ -186,15 +203,16 @@ class HomeworkAssignment {
     final subs = rawSubs is Iterable
         ? rawSubs
             .whereType<Map<String, dynamic>>()
-            .map(HomeworkSubmission.fromMap)
+            .map((m) => HomeworkSubmission.fromMap({'homeworkId': hwId, ...m}))
             .toList()
         : <HomeworkSubmission>[];
     return HomeworkAssignment(
-      id: documentId ?? (map['id'] as String? ?? ''),
+      id: hwId,
       title: map['title'] as String? ?? 'Homework',
       description: map['description'] as String? ?? '',
       groupId: map['groupId'] as String? ?? '',
       teacherId: map['teacherId'] as String? ?? '',
+      language: CourseLanguage.fromString(map['language'] as String?),
       dueDate: parseFlexibleDateTime(map['dueDate']),
       createdAt: parseFlexibleDateTime(map['createdAt']),
       completedByUids: done,

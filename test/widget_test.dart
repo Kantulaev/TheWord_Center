@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:the_word/core/models/language_type.dart';
+import 'package:the_word/core/models/study_group.dart';
 import 'package:the_word/core/providers/app_providers.dart';
 import 'package:the_word/core/repositories/auth_repository.dart';
 import 'package:the_word/core/repositories/demo_realtime_repository.dart';
@@ -285,6 +287,7 @@ void main() {
 
     expect(find.text('Authorized Staff Only'), findsOneWidget);
     expect(find.text('Welcome to The Word'), findsOneWidget);
+    expect(find.text('Ogonbaeva 222, Bishkek, Kyrgyzstan, 720000'), findsOneWidget);
     expect(find.text('Sign in with Google'), findsOneWidget);
     expect(find.text('Staff Sign In Only'), findsOneWidget);
     expect(find.text('Live Master Schedule'), findsNothing);
@@ -301,6 +304,22 @@ void main() {
     );
     addTearDown(repo.dispose);
 
+    // Seed a Sharing group to prove Student Portal never renders Sharing groups
+    await repo.upsertGroup(
+      StudyGroup(
+        id: 'grp_hidden_sharing',
+        name: 'Private Staff Sharing',
+        language: CourseLanguage.sharing,
+        level: 'All Levels',
+        teacherId: 't_sharllote',
+        classroomId: 'room_hall',
+        scheduleWeekdays: const [DateTime.friday],
+        startHour: 17,
+        startMinute: 0,
+        createdAt: DateTime(2026, 11, 25),
+      ),
+    );
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -315,7 +334,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('The Word • Student Portal'), findsOneWidget);
+    expect(find.text('Ogonbaeva 222, Bishkek, Kyrgyzstan, 720000 (Near Victory Business Center (280 m) & Detsky Mir (3 min))'), findsOneWidget);
     expect(find.text('HSK 1 — Foundations'), findsOneWidget);
+    expect(find.text('Private Staff Sharing'), findsNothing);
 
     await tester.tap(find.text('HSK 1 — Foundations'));
     await tester.pumpAndSettle();
@@ -323,6 +344,12 @@ void main() {
     expect(find.text('Joined ✓'), findsOneWidget);
     expect(find.text('HSK 1 Unit 3 Tone Drills & Audio'), findsOneWidget);
     expect(find.text('Submit Answer / Link'), findsWidgets);
+    await tester.scrollUntilVisible(
+      find.text('Request Change'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Request Change'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

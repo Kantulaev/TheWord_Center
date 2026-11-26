@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-const String kCurrentAppVersion = '1.4.0';
+const String kCurrentAppVersion = '1.5.0';
 
 enum ReleaseChangeType { newFeature, improved, fixed }
 
@@ -34,6 +34,35 @@ class AppReleaseNote {
 
 /// Official in-app changelog displayed to teachers & staff under "What's New".
 const List<AppReleaseNote> kAppChangelog = [
+  AppReleaseNote(
+    version: '1.5.0',
+    dateLabel: 'Nov 26, 2026',
+    title: 'Center Schedule Sync, Sharing Privacy & Speed Optimization',
+    summary:
+        'Synchronized timetable with official Bishkek working hours, isolated Sharing groups strictly for staff, hardened Firestore security rules, and optimized Firebase read quotas.',
+    highlights: [
+      ReleaseHighlight(
+        type: ReleaseChangeType.newFeature,
+        text:
+            'Official Center Hours & Contacts: Mon/Wed/Fri 08:30–19:00, Tue/Thu/Sat 09:00–18:00, Sunday Closed, plus Ogonbaeva 222 address & WhatsApp/phone links.',
+      ),
+      ReleaseHighlight(
+        type: ReleaseChangeType.newFeature,
+        text:
+            'Sharing Confidentiality: Sharing groups and sessions are now hidden from all students at both UI and Cloud Firestore security rule levels.',
+      ),
+      ReleaseHighlight(
+        type: ReleaseChangeType.improved,
+        text:
+            'Zero-Leak Security Hardening: split teacher salaries/phones, student rosters, and homework submissions into strict owner/staff collections with verified email checks.',
+      ),
+      ReleaseHighlight(
+        type: ReleaseChangeType.improved,
+        text:
+            'Firebase Speed & Quota Savings: enabled IndexedDB local cache, scoped student queries, immutable asset caching, and capped log listeners to minimize free-tier reads.',
+      ),
+    ],
+  ),
   AppReleaseNote(
     version: '1.4.0',
     dateLabel: 'Nov 26, 2026',

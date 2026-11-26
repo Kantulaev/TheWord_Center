@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../core/data/center_info.dart';
 import '../../../core/models/language_type.dart';
 import '../../../core/models/lesson.dart';
 import '../../../core/providers/app_providers.dart';
@@ -106,9 +107,12 @@ class WeekTimetableView extends ConsumerWidget {
   }) {
     final isToday = _sameDay(day, now);
     final isSelected = _sameDay(day, selectedDate);
+    final dayHours = CenterInfo.hoursForDate(day);
     final accent = isToday
         ? AppColors.liveEmerald
-        : (isSelected ? AppColors.englishAccent(context) : null);
+        : (isSelected
+            ? AppColors.englishAccent(context)
+            : (!dayHours.isOpen ? AppColors.warningAmber : null));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -139,6 +143,18 @@ class WeekTimetableView extends ConsumerWidget {
                       DateFormat('MMM d').format(day),
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
+                    Text(
+                      dayHours.displayRange,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            fontSize: 10,
+                            color: dayHours.isOpen
+                                ? AppColors.textMuted(context)
+                                : AppColors.warningAmber,
+                            fontWeight: dayHours.isOpen
+                                ? FontWeight.w500
+                                : FontWeight.w700,
+                          ),
+                    ),
                   ],
                 ),
               ),
@@ -167,9 +183,11 @@ class WeekTimetableView extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 6),
             child: Text(
-              'No lessons',
+              dayHours.isOpen ? 'No lessons' : 'Closed (Day Off)',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: dayHours.isOpen ? null : AppColors.warningAmber,
+                  ),
             ),
           )
         else

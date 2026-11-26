@@ -55,6 +55,8 @@ class GroupDetailPanel extends ConsumerWidget {
     final homeworks = (ref.watch(homeworksStreamProvider).value ?? const [])
         .where((h) => h.groupId == group.id)
         .toList();
+    final topLevelSubs =
+        ref.watch(allHomeworkSubmissionsProvider).value ?? const [];
 
     final teacher = teachers[group.teacherId];
     final room = classrooms[group.classroomId];
@@ -70,6 +72,15 @@ class GroupDetailPanel extends ConsumerWidget {
               LanguageBadge(language: group.language),
               const SizedBox(width: 8),
               GlassInfoTag(label: group.level),
+              if (group.language == CourseLanguage.sharing) ...[
+                const SizedBox(width: 8),
+                const StatusBadge(
+                  label: 'Staff Only',
+                  color: AppColors.sharingViolet,
+                  icon: CupertinoIcons.lock_shield_fill,
+                  compact: true,
+                ),
+              ],
               const Spacer(),
               if (onClose != null)
                 IconButton(
@@ -193,7 +204,15 @@ class GroupDetailPanel extends ConsumerWidget {
             )
           else
             for (final hw in homeworks) ...[
-              LiquidGlassContainer(
+              Builder(
+                builder: (context) {
+                  final mergedSubsByUid = <String, HomeworkSubmission>{
+                    for (final s in hw.submissions) s.studentUid: s,
+                    for (final s in topLevelSubs)
+                      if (s.homeworkId == hw.id) s.studentUid: s,
+                  };
+                  final allSubs = mergedSubsByUid.values.toList();
+                  return LiquidGlassContainer(
                 borderRadius: 18,
                 blurSigma: 12,
                 elevation: 0.3,
@@ -229,14 +248,14 @@ class GroupDetailPanel extends ConsumerWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Due ${DateFormat('MMM d').format(hw.dueDate)} • ${hw.completedByUids.length} completed • ${hw.submissions.length} submitted',
+                      'Due ${DateFormat('MMM d').format(hw.dueDate)} • ${hw.completedByUids.length} completed • ${allSubs.length} submitted',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                             color: AppColors.liveEmerald,
                           ),
                     ),
-                    if (hw.submissions.isNotEmpty) ...[
+                    if (allSubs.isNotEmpty) ...[
                       const SizedBox(height: 10),
-                      for (final sub in hw.submissions) ...[
+                      for (final sub in allSubs) ...[
                         Container(
                           margin: const EdgeInsets.only(bottom: 6),
                           padding: const EdgeInsets.all(10),
@@ -322,6 +341,8 @@ class GroupDetailPanel extends ConsumerWidget {
                     ],
                   ],
                 ),
+              );
+                },
               ),
               const SizedBox(height: 8),
             ],

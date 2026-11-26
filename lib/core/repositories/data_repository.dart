@@ -14,10 +14,16 @@ abstract class DataRepository {
 
   Stream<List<Lesson>> watchLessons();
   Stream<List<Teacher>> watchTeachers();
+  Stream<List<Teacher>> watchPublicTeachers();
   Stream<List<Classroom>> watchClassrooms();
   Stream<List<Student>> watchStudents();
+  Stream<Student?> watchMyStudentRecord(String email);
   Stream<List<StudyGroup>> watchGroups();
+  Stream<List<StudyGroup>> watchPublicGroups();
   Stream<List<HomeworkAssignment>> watchHomeworks();
+  Stream<List<HomeworkAssignment>> watchHomeworksForGroups(List<String> groupIds);
+  Stream<List<HomeworkSubmission>> watchAllHomeworkSubmissions();
+  Stream<List<HomeworkSubmission>> watchMyHomeworkSubmissions(String studentUid);
   Stream<StudentPortalProfile> watchStudentPortalProfile({
     required String uid,
     required String email,
@@ -28,6 +34,7 @@ abstract class DataRepository {
   Stream<List<PaymentRecord>> watchPayments();
   Stream<List<TrialLead>> watchTrialLeads();
   Stream<List<RescheduleRequest>> watchRescheduleRequests();
+  Stream<List<RescheduleRequest>> watchMyRescheduleRequests(String studentUid);
   Stream<List<ActivityLogEntry>> watchActivityLogs();
 
   Future<void> upsertLesson(Lesson lesson);

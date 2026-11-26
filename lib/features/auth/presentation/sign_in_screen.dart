@@ -2,6 +2,7 @@ import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../core/data/center_info.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/repositories/auth_repository.dart';
 import '../../../core/theme/app_colors.dart';
@@ -227,6 +228,43 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                             'Students can register freely with any Google account to join HSK groups & view homework.',
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              color: AppColors.englishSapphire
+                                  .withValues(alpha: 0.06),
+                              border: Border.all(
+                                color: AppColors.englishSapphire
+                                    .withValues(alpha: 0.16),
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  CenterInfo.address,
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  CenterInfo.compactHoursSummary,
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${CenterInfo.primaryPhone} • ${CenterInfo.secondaryPhone}',
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),

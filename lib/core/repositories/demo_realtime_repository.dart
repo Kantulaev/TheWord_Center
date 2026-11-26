@@ -91,13 +91,110 @@ class DemoRealtimeRepository implements DataRepository {
   @override
   Stream<List<Teacher>> watchTeachers() => _replayStream(_sortedTeachers, _teachersCtrl.stream);
   @override
+  Stream<List<Teacher>> watchPublicTeachers() => _replayStream(
+        () => _sortedTeachers()
+            .map(
+              (t) => Teacher(
+                id: t.id,
+                fullName: t.fullName,
+                avatarColorHex: t.avatarColorHex,
+                languages: t.languages,
+                specializations: const [],
+                isActive: t.isActive,
+                hourlyRate: 0,
+                clubRate: 0,
+                createdAt: t.createdAt,
+              ),
+            )
+            .toList(growable: false),
+        _teachersCtrl.stream.map(
+          (list) => list
+              .map(
+                (t) => Teacher(
+                  id: t.id,
+                  fullName: t.fullName,
+                  avatarColorHex: t.avatarColorHex,
+                  languages: t.languages,
+                  specializations: const [],
+                  isActive: t.isActive,
+                  hourlyRate: 0,
+                  clubRate: 0,
+                  createdAt: t.createdAt,
+                ),
+              )
+              .toList(growable: false),
+        ),
+      );
+  @override
   Stream<List<Classroom>> watchClassrooms() => _replayStream(_sortedClassrooms, _classroomsCtrl.stream);
   @override
   Stream<List<Student>> watchStudents() => _replayStream(_sortedStudents, _studentsCtrl.stream);
   @override
+  Stream<Student?> watchMyStudentRecord(String email) {
+    final norm = email.trim().toLowerCase();
+    if (norm.isEmpty) return Stream.value(null);
+    Student? match(List<Student> list) {
+      for (final s in list) {
+        if (s.email.trim().toLowerCase() == norm) return s;
+      }
+      return null;
+    }
+    return _replayStream(
+      () => match(_sortedStudents()),
+      _studentsCtrl.stream.map(match),
+    );
+  }
+  @override
   Stream<List<StudyGroup>> watchGroups() => _replayStream(_sortedGroups, _groupsCtrl.stream);
   @override
+  Stream<List<StudyGroup>> watchPublicGroups() {
+    List<StudyGroup> filter(List<StudyGroup> list) => list
+        .where((g) => g.language != CourseLanguage.sharing)
+        .map((g) => g.copyWith(members: const [], notes: ''))
+        .toList(growable: false);
+    return _replayStream(
+      () => filter(_sortedGroups()),
+      _groupsCtrl.stream.map(filter),
+    );
+  }
+  @override
   Stream<List<HomeworkAssignment>> watchHomeworks() => _replayStream(_sortedHomeworks, _homeworksCtrl.stream);
+  @override
+  Stream<List<HomeworkAssignment>> watchHomeworksForGroups(List<String> groupIds) {
+    final idSet = groupIds.where((e) => e.isNotEmpty).toSet();
+    if (idSet.isEmpty) return Stream.value(const []);
+    List<HomeworkAssignment> filter(List<HomeworkAssignment> list) => list
+        .where((h) => h.language != CourseLanguage.sharing && idSet.contains(h.groupId))
+        .toList(growable: false);
+    return _replayStream(
+      () => filter(_sortedHomeworks()),
+      _homeworksCtrl.stream.map(filter),
+    );
+  }
+  @override
+  Stream<List<HomeworkSubmission>> watchAllHomeworkSubmissions() {
+    List<HomeworkSubmission> collect(List<HomeworkAssignment> list) => [
+          for (final h in list)
+            for (final s in h.submissions) s.copyWith(homeworkId: h.id),
+        ];
+    return _replayStream(
+      () => collect(_sortedHomeworks()),
+      _homeworksCtrl.stream.map(collect),
+    );
+  }
+  @override
+  Stream<List<HomeworkSubmission>> watchMyHomeworkSubmissions(String studentUid) {
+    if (studentUid.isEmpty) return Stream.value(const []);
+    List<HomeworkSubmission> collect(List<HomeworkAssignment> list) => [
+          for (final h in list)
+            for (final s in h.submissions)
+              if (s.studentUid == studentUid) s.copyWith(homeworkId: h.id),
+        ];
+    return _replayStream(
+      () => collect(_sortedHomeworks()),
+      _homeworksCtrl.stream.map(collect),
+    );
+  }
   @override
   Stream<List<AttendanceRecord>> watchAttendance() => _replayStream(_sortedAttendance, _attendanceCtrl.stream);
   @override
@@ -106,6 +203,17 @@ class DemoRealtimeRepository implements DataRepository {
   Stream<List<TrialLead>> watchTrialLeads() => _replayStream(_sortedLeads, _leadsCtrl.stream);
   @override
   Stream<List<RescheduleRequest>> watchRescheduleRequests() => _replayStream(_sortedRequests, _requestsCtrl.stream);
+  @override
+  Stream<List<RescheduleRequest>> watchMyRescheduleRequests(String studentUid) {
+    if (studentUid.isEmpty) return Stream.value(const []);
+    List<RescheduleRequest> filter(List<RescheduleRequest> list) => list
+        .where((r) => r.studentUid == studentUid)
+        .toList(growable: false);
+    return _replayStream(
+      () => filter(_sortedRequests()),
+      _requestsCtrl.stream.map(filter),
+    );
+  }
   @override
   Stream<List<ActivityLogEntry>> watchActivityLogs() => _replayStream(_sortedActivity, _activityCtrl.stream);
 
@@ -506,10 +614,10 @@ class DemoRealtimeRepository implements DataRepository {
         coTeacherIds: const ['t_andrew'],
         classroomId: 'room_hall',
         studentIds: const ['s_olivia', 's_liam', 's_chloe', 's_ethan'],
-        startTime: today.add(const Duration(hours: 19)),
-        endTime: today.add(const Duration(hours: 20)),
+        startTime: today.add(const Duration(hours: 17)),
+        endTime: today.add(const Duration(hours: 18)),
         status: LessonStatus.scheduled,
-        notes: 'Open casual chat session for students and teachers.',
+        notes: 'Open casual chat session (Sharing — visible to teachers only).',
         createdAt: today.subtract(const Duration(days: 1)),
       ),
     ];

@@ -182,6 +182,38 @@ class StudyGroup {
     };
   }
 
+  /// Public group metadata stored in `groups/{id}` with NO classmate emails,
+  /// payment records, or private teacher notes.
+  Map<String, dynamic> toPublicMap({bool useFirestoreTimestamp = false}) {
+    return {
+      'id': id,
+      'name': name,
+      'language': language.name,
+      'level': level,
+      'teacherId': teacherId,
+      'classroomId': classroomId,
+      'scheduleWeekdays': scheduleWeekdays,
+      'startHour': startHour,
+      'startMinute': startMinute,
+      'durationMinutes': durationMinutes,
+      'createdAt': useFirestoreTimestamp
+          ? Timestamp.fromDate(createdAt)
+          : createdAt.toIso8601String(),
+    };
+  }
+
+  /// Staff-only cohort member roster & payment balances stored in `group_rosters/{id}`.
+  Map<String, dynamic> toRosterMap({bool useFirestoreTimestamp = false}) {
+    return {
+      'groupId': id,
+      'members': members.map((m) => m.toMap()).toList(),
+      'notes': notes,
+      'updatedAt': useFirestoreTimestamp
+          ? FieldValue.serverTimestamp()
+          : DateTime.now().toIso8601String(),
+    };
+  }
+
   factory StudyGroup.fromMap(Map<String, dynamic> map, {String? documentId}) {
     final lang = CourseLanguage.fromString(map['language'] as String?);
     final rawDays = map['scheduleWeekdays'];

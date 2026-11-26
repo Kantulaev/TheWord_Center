@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/classroom.dart';
 import '../models/homework.dart';
+import '../models/language_type.dart';
 import '../models/lesson.dart';
 import '../models/operations_models.dart';
 import '../models/student.dart';
@@ -10,7 +13,10 @@ import '../models/teacher.dart';
 import 'center_seed_data.dart';
 import 'data_repository.dart';
 
-/// Production Cloud Firestore repository with real-time `.snapshots()` listeners.
+/// Production Cloud Firestore repository with:
+/// - Strict staff vs student role isolation (hiding Sharing groups, teacher salaries/PII,
+///   classmate rosters, and raw 1-on-1 lessons from student queries)
+/// - Quota-conscious query limits and single-doc seed/migration check
 class FirestoreRepository implements DataRepository {
   FirestoreRepository({FirebaseFirestore? firestore})
       : _db = firestore ?? FirebaseFirestore.instance;
@@ -21,14 +27,20 @@ class FirestoreRepository implements DataRepository {
       _db.collection('lessons');
   CollectionReference<Map<String, dynamic>> get _teachersCol =>
       _db.collection('teachers');
+  CollectionReference<Map<String, dynamic>> get _publicTeachersCol =>
+      _db.collection('public_teachers');
   CollectionReference<Map<String, dynamic>> get _classroomsCol =>
       _db.collection('classrooms');
   CollectionReference<Map<String, dynamic>> get _studentsCol =>
       _db.collection('students');
   CollectionReference<Map<String, dynamic>> get _groupsCol =>
       _db.collection('groups');
+  CollectionReference<Map<String, dynamic>> get _rostersCol =>
+      _db.collection('group_rosters');
   CollectionReference<Map<String, dynamic>> get _homeworksCol =>
       _db.collection('homeworks');
+  CollectionReference<Map<String, dynamic>> get _homeworkSubmissionsCol =>
+      _db.collection('homework_submissions');
   CollectionReference<Map<String, dynamic>> get _profilesCol =>
       _db.collection('student_profiles');
   CollectionReference<Map<String, dynamic>> get _attendanceCol =>
@@ -41,6 +53,8 @@ class FirestoreRepository implements DataRepository {
       _db.collection('reschedule_requests');
   CollectionReference<Map<String, dynamic>> get _activityCol =>
       _db.collection('activity_logs');
+  DocumentReference<Map<String, dynamic>> get _metaDoc =>
+      _db.collection('center_config').doc('meta');
 
   @override
   bool get isCloudSync => true;
@@ -67,6 +81,20 @@ class FirestoreRepository implements DataRepository {
   }
 
   @override
+  Stream<List<Teacher>> watchPublicTeachers() {
+    return _publicTeachersCol.orderBy('fullName').snapshots().map(
+          (snap) => snap.docs
+              .map(
+                (doc) => Teacher.fromMap(
+                  {...doc.data(), 'hourlyRate': 0, 'clubRate': 0},
+                  documentId: doc.id,
+                ),
+              )
+              .toList(growable: false),
+        );
+  }
+
+  @override
   Stream<List<Classroom>> watchClassrooms() {
     return _classroomsCol.orderBy('name').snapshots().map(
           (snap) => snap.docs
@@ -85,18 +113,101 @@ class FirestoreRepository implements DataRepository {
   }
 
   @override
+  Stream<Student?> watchMyStudentRecord(String email) {
+    final norm = email.trim().toLowerCase();
+    if (norm.isEmpty) return Stream.value(null);
+    return _studentsCol
+        .where('email', isEqualTo: norm)
+        .limit(1)
+        .snapshots()
+        .map((snap) {
+      if (snap.docs.isEmpty) return null;
+      final doc = snap.docs.first;
+      return Student.fromMap(doc.data(), documentId: doc.id);
+    });
+  }
+
+  /// Staff cohort listener merging public `/groups` metadata with staff-only
+  /// `/group_rosters` payment data (gracefully supporting un-migrated legacy docs).
+  @override
   Stream<List<StudyGroup>> watchGroups() {
-    return _groupsCol.orderBy('name').snapshots().map(
-          (snap) => snap.docs
+    return Stream<List<StudyGroup>>.multi((controller) {
+      List<StudyGroup> latestGroups = const [];
+      Map<String, Map<String, dynamic>> latestRosters = const {};
+      var hasGroups = false;
+
+      void emitMerged() {
+        if (!hasGroups) return;
+        final merged = latestGroups.map((g) {
+          final rosterData = latestRosters[g.id];
+          if (rosterData == null) return g;
+          final rawMembers = rosterData['members'];
+          final members = rawMembers is Iterable
+              ? rawMembers
+                  .whereType<Map<String, dynamic>>()
+                  .map(GroupMemberPayment.fromMap)
+                  .toList()
+              : g.members;
+          final notes = rosterData['notes'] as String? ?? g.notes;
+          return g.copyWith(members: members, notes: notes);
+        }).toList(growable: false);
+        controller.add(merged);
+      }
+
+      final groupSub = _groupsCol.orderBy('name').snapshots().listen(
+        (snap) {
+          hasGroups = true;
+          latestGroups = snap.docs
               .map((doc) => StudyGroup.fromMap(doc.data(), documentId: doc.id))
-              .toList(growable: false),
-        );
+              .toList(growable: false);
+          emitMerged();
+        },
+        onError: controller.addError,
+      );
+
+      final rosterSub = _rostersCol.snapshots().listen(
+        (snap) {
+          latestRosters = {
+            for (final doc in snap.docs) doc.id: doc.data(),
+          };
+          emitMerged();
+        },
+        onError: (_) {},
+      );
+
+      controller.onCancel = () async {
+        await groupSub.cancel();
+        await rosterSub.cancel();
+      };
+    });
+  }
+
+  /// Safe public group list for students: strictly excludes `sharing` groups
+  /// and strips classmate payment rosters.
+  @override
+  Stream<List<StudyGroup>> watchPublicGroups() {
+    return _groupsCol
+        .where(
+          'language',
+          whereIn: [CourseLanguage.chinese.name, CourseLanguage.english.name],
+        )
+        .snapshots()
+        .map((snap) {
+          final list = snap.docs
+              .map((doc) => StudyGroup.fromMap(doc.data(), documentId: doc.id))
+              .where((g) => g.language != CourseLanguage.sharing)
+              .map((g) => g.copyWith(members: const [], notes: ''))
+              .toList()
+            ..sort((a, b) => a.name.compareTo(b.name));
+          return List.unmodifiable(list);
+        });
   }
 
   @override
   Stream<List<HomeworkAssignment>> watchHomeworks() {
     return _homeworksCol
         .orderBy('createdAt', descending: true)
+        .limit(120)
         .snapshots()
         .map(
           (snap) => snap.docs
@@ -106,6 +217,58 @@ class FirestoreRepository implements DataRepository {
                   documentId: doc.id,
                 ),
               )
+              .toList(growable: false),
+        );
+  }
+
+  @override
+  Stream<List<HomeworkAssignment>> watchHomeworksForGroups(
+    List<String> groupIds,
+  ) {
+    final cleanIds = groupIds.where((id) => id.isNotEmpty).take(10).toList();
+    if (cleanIds.isEmpty) return Stream.value(const []);
+    return _homeworksCol
+        .where('groupId', whereIn: cleanIds)
+        .snapshots()
+        .map((snap) {
+      final list = snap.docs
+          .map(
+            (doc) => HomeworkAssignment.fromMap(
+              doc.data(),
+              documentId: doc.id,
+            ),
+          )
+          .where((h) => h.language != CourseLanguage.sharing)
+          .toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return List.unmodifiable(list);
+    });
+  }
+
+  @override
+  Stream<List<HomeworkSubmission>> watchAllHomeworkSubmissions() {
+    return _homeworkSubmissionsCol
+        .orderBy('submittedAt', descending: true)
+        .limit(200)
+        .snapshots()
+        .map(
+          (snap) => snap.docs
+              .map((doc) => HomeworkSubmission.fromMap(doc.data()))
+              .toList(growable: false),
+        );
+  }
+
+  @override
+  Stream<List<HomeworkSubmission>> watchMyHomeworkSubmissions(
+    String studentUid,
+  ) {
+    if (studentUid.isEmpty) return Stream.value(const []);
+    return _homeworkSubmissionsCol
+        .where('studentUid', isEqualTo: studentUid)
+        .snapshots()
+        .map(
+          (snap) => snap.docs
+              .map((doc) => HomeworkSubmission.fromMap(doc.data()))
               .toList(growable: false),
         );
   }
@@ -138,6 +301,7 @@ class FirestoreRepository implements DataRepository {
   Stream<List<AttendanceRecord>> watchAttendance() {
     return _attendanceCol
         .orderBy('recordedAt', descending: true)
+        .limit(200)
         .snapshots()
         .map(
           (snap) => snap.docs
@@ -155,6 +319,7 @@ class FirestoreRepository implements DataRepository {
   Stream<List<PaymentRecord>> watchPayments() {
     return _paymentsCol
         .orderBy('paidAt', descending: true)
+        .limit(150)
         .snapshots()
         .map(
           (snap) => snap.docs
@@ -167,6 +332,7 @@ class FirestoreRepository implements DataRepository {
   Stream<List<TrialLead>> watchTrialLeads() {
     return _leadsCol
         .orderBy('createdAt', descending: true)
+        .limit(150)
         .snapshots()
         .map(
           (snap) => snap.docs
@@ -179,6 +345,7 @@ class FirestoreRepository implements DataRepository {
   Stream<List<RescheduleRequest>> watchRescheduleRequests() {
     return _requestsCol
         .orderBy('createdAt', descending: true)
+        .limit(100)
         .snapshots()
         .map(
           (snap) => snap.docs
@@ -193,10 +360,32 @@ class FirestoreRepository implements DataRepository {
   }
 
   @override
+  Stream<List<RescheduleRequest>> watchMyRescheduleRequests(
+    String studentUid,
+  ) {
+    if (studentUid.isEmpty) return Stream.value(const []);
+    return _requestsCol
+        .where('studentUid', isEqualTo: studentUid)
+        .snapshots()
+        .map((snap) {
+      final list = snap.docs
+          .map(
+            (doc) => RescheduleRequest.fromMap(
+              doc.data(),
+              documentId: doc.id,
+            ),
+          )
+          .toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return List.unmodifiable(list);
+    });
+  }
+
+  @override
   Stream<List<ActivityLogEntry>> watchActivityLogs() {
     return _activityCol
         .orderBy('createdAt', descending: true)
-        .limit(100)
+        .limit(60)
         .snapshots()
         .map(
           (snap) => snap.docs
@@ -222,15 +411,27 @@ class FirestoreRepository implements DataRepository {
       _lessonsCol.doc(lessonId).delete();
 
   @override
-  Future<void> upsertTeacher(Teacher teacher) {
-    return _teachersCol
-        .doc(teacher.id)
-        .set(teacher.toMap(useFirestoreTimestamp: true), SetOptions(merge: true));
+  Future<void> upsertTeacher(Teacher teacher) async {
+    final batch = _db.batch();
+    batch.set(
+      _teachersCol.doc(teacher.id),
+      teacher.toMap(useFirestoreTimestamp: true),
+      SetOptions(merge: true),
+    );
+    batch.set(
+      _publicTeachersCol.doc(teacher.id),
+      teacher.toPublicMap(),
+    );
+    await batch.commit();
   }
 
   @override
-  Future<void> deleteTeacher(String teacherId) =>
-      _teachersCol.doc(teacherId).delete();
+  Future<void> deleteTeacher(String teacherId) async {
+    final batch = _db.batch();
+    batch.delete(_teachersCol.doc(teacherId));
+    batch.delete(_publicTeachersCol.doc(teacherId));
+    await batch.commit();
+  }
 
   @override
   Future<void> upsertClassroom(Classroom classroom) {
@@ -246,9 +447,13 @@ class FirestoreRepository implements DataRepository {
 
   @override
   Future<void> upsertStudent(Student student) {
-    return _studentsCol
-        .doc(student.id)
-        .set(student.toMap(useFirestoreTimestamp: true), SetOptions(merge: true));
+    final normalized = student.email.trim().toLowerCase();
+    return _studentsCol.doc(student.id).set(
+          student
+              .copyWith(email: normalized)
+              .toMap(useFirestoreTimestamp: true),
+          SetOptions(merge: true),
+        );
   }
 
   @override
@@ -269,14 +474,27 @@ class FirestoreRepository implements DataRepository {
       _studentsCol.doc(studentId).delete();
 
   @override
-  Future<void> upsertGroup(StudyGroup group) {
-    return _groupsCol
-        .doc(group.id)
-        .set(group.toMap(useFirestoreTimestamp: true), SetOptions(merge: true));
+  Future<void> upsertGroup(StudyGroup group) async {
+    final batch = _db.batch();
+    batch.set(
+      _groupsCol.doc(group.id),
+      group.toPublicMap(useFirestoreTimestamp: true),
+    );
+    batch.set(
+      _rostersCol.doc(group.id),
+      group.toRosterMap(useFirestoreTimestamp: true),
+      SetOptions(merge: true),
+    );
+    await batch.commit();
   }
 
   @override
-  Future<void> deleteGroup(String groupId) => _groupsCol.doc(groupId).delete();
+  Future<void> deleteGroup(String groupId) async {
+    final batch = _db.batch();
+    batch.delete(_groupsCol.doc(groupId));
+    batch.delete(_rostersCol.doc(groupId));
+    await batch.commit();
+  }
 
   @override
   Future<void> upsertHomework(HomeworkAssignment homework) {
@@ -308,22 +526,16 @@ class FirestoreRepository implements DataRepository {
     required String homeworkId,
     required HomeworkSubmission submission,
   }) async {
-    final docRef = _homeworksCol.doc(homeworkId);
-    await _db.runTransaction((tx) async {
-      final snap = await tx.get(docRef);
-      if (!snap.exists || snap.data() == null) return;
-      final hw = HomeworkAssignment.fromMap(snap.data()!, documentId: snap.id);
-      final subs = hw.submissions
-          .where((s) => s.studentUid != submission.studentUid)
-          .toList()
-        ..add(submission);
-      final done = {...hw.completedByUids, submission.studentUid}.toList();
-      tx.update(docRef, {
-        'submissions':
-            subs.map((s) => s.toMap(useFirestoreTimestamp: true)).toList(),
-        'completedByUids': done,
-      });
-    });
+    final docId = HomeworkSubmission.docId(homeworkId, submission.studentUid);
+    final payload = submission
+        .copyWith(homeworkId: homeworkId)
+        .toMap(useFirestoreTimestamp: true);
+    await _homeworkSubmissionsCol.doc(docId).set(payload, SetOptions(merge: true));
+    await toggleHomeworkCompletion(
+      homeworkId: homeworkId,
+      uid: submission.studentUid,
+      completed: true,
+    );
   }
 
   @override
@@ -332,27 +544,25 @@ class FirestoreRepository implements DataRepository {
     required String studentUid,
     required String feedback,
     required bool reviewed,
-  }) async {
-    final docRef = _homeworksCol.doc(homeworkId);
-    await _db.runTransaction((tx) async {
-      final snap = await tx.get(docRef);
-      if (!snap.exists || snap.data() == null) return;
-      final hw = HomeworkAssignment.fromMap(snap.data()!, documentId: snap.id);
-      final subs = hw.submissions.map((s) {
-        if (s.studentUid != studentUid) return s;
-        return s.copyWith(teacherFeedback: feedback, reviewed: reviewed);
-      }).toList();
-      tx.update(docRef, {
-        'submissions':
-            subs.map((s) => s.toMap(useFirestoreTimestamp: true)).toList(),
-      });
-    });
+  }) {
+    final docId = HomeworkSubmission.docId(homeworkId, studentUid);
+    return _homeworkSubmissionsCol.doc(docId).set(
+      {
+        'homeworkId': homeworkId,
+        'studentUid': studentUid,
+        'teacherFeedback': feedback,
+        'reviewed': reviewed,
+      },
+      SetOptions(merge: true),
+    );
   }
 
   @override
   Future<void> saveStudentPortalProfile(StudentPortalProfile profile) {
     return _profilesCol.doc(profile.uid).set(
-          profile.toMap(),
+          profile
+              .copyWith(email: profile.email.trim().toLowerCase())
+              .toMap(),
           SetOptions(merge: true),
         );
   }
@@ -472,29 +682,31 @@ class FirestoreRepository implements DataRepository {
 
   bool _seedAttempted = false;
 
+  /// Single-document metadata check (1 read total when already migrated/seeded)
+  /// saving Firebase Spark quota while keeping `public_teachers` and split
+  /// `group_rosters` synchronized on upgrades.
   @override
   Future<void> seedInitialCenterDataIfNeeded({bool force = false}) async {
     if (_seedAttempted && !force) return;
     _seedAttempted = true;
     try {
-      final now = DateTime.now();
-      final roomsSnap = await _classroomsCol.limit(1).get();
-      final teachersSnap = await _teachersCol.limit(1).get();
-      final groupsSnap = await _groupsCol.limit(1).get();
-      final clubSnap =
-          await _lessonsCol.doc(CenterSeedData.clubChineseId).get();
-
-      final needRooms = force || roomsSnap.docs.isEmpty;
-      final needTeachers = force || teachersSnap.docs.isEmpty;
-      final needGroups = force || groupsSnap.docs.isEmpty;
-      final needClubs = force || !clubSnap.exists;
-
-      if (!needRooms && !needTeachers && !needGroups && !needClubs) {
+      final metaSnap = await _metaDoc.get();
+      final schemaVersion =
+          (metaSnap.data()?['schemaVersion'] as num?)?.toInt() ?? 0;
+      if (!force && metaSnap.exists && schemaVersion >= 2) {
         return;
       }
 
+      final now = DateTime.now();
+      final roomsSnap = await _classroomsCol.limit(1).get();
+      final teachersSnap = await _teachersCol.get();
+      final groupsSnap = await _groupsCol.get();
+      final clubSnap =
+          await _lessonsCol.doc(CenterSeedData.clubChineseId).get();
+
       final batch = _db.batch();
-      if (needRooms) {
+
+      if (force || roomsSnap.docs.isEmpty) {
         for (final room in CenterSeedData.buildClassrooms(now)) {
           batch.set(
             _classroomsCol.doc(room.id),
@@ -503,25 +715,54 @@ class FirestoreRepository implements DataRepository {
           );
         }
       }
-      if (needTeachers) {
+
+      if (force || teachersSnap.docs.isEmpty) {
         for (final teacher in CenterSeedData.buildTeachers(now)) {
           batch.set(
             _teachersCol.doc(teacher.id),
             teacher.toMap(useFirestoreTimestamp: true),
             SetOptions(merge: true),
           );
+          batch.set(_publicTeachersCol.doc(teacher.id), teacher.toPublicMap());
+        }
+      } else {
+        for (final doc in teachersSnap.docs) {
+          final teacher = Teacher.fromMap(doc.data(), documentId: doc.id);
+          batch.set(_publicTeachersCol.doc(teacher.id), teacher.toPublicMap());
         }
       }
-      if (needGroups) {
+
+      if (force || groupsSnap.docs.isEmpty) {
         for (final group in CenterSeedData.buildStudyGroups(now)) {
           batch.set(
             _groupsCol.doc(group.id),
-            group.toMap(useFirestoreTimestamp: true),
+            group.toPublicMap(useFirestoreTimestamp: true),
+          );
+          batch.set(
+            _rostersCol.doc(group.id),
+            group.toRosterMap(useFirestoreTimestamp: true),
             SetOptions(merge: true),
           );
         }
+      } else {
+        for (final doc in groupsSnap.docs) {
+          final data = doc.data();
+          final group = StudyGroup.fromMap(data, documentId: doc.id);
+          if (data.containsKey('members') || data.containsKey('notes')) {
+            batch.set(
+              _rostersCol.doc(group.id),
+              group.toRosterMap(useFirestoreTimestamp: true),
+              SetOptions(merge: true),
+            );
+            batch.set(
+              _groupsCol.doc(group.id),
+              group.toPublicMap(useFirestoreTimestamp: true),
+            );
+          }
+        }
       }
-      if (needClubs) {
+
+      if (force || !clubSnap.exists) {
         for (final club in CenterSeedData.buildSaturdayClubs(now)) {
           batch.set(
             _lessonsCol.doc(club.id),
@@ -530,6 +771,12 @@ class FirestoreRepository implements DataRepository {
           );
         }
       }
+
+      batch.set(_metaDoc, {
+        'seeded': true,
+        'schemaVersion': 2,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
       await batch.commit();
     } catch (_) {

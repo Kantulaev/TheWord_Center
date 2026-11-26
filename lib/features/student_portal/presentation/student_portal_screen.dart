@@ -4,13 +4,16 @@ import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/data/center_info.dart';
 import '../../../core/models/homework.dart';
+import '../../../core/models/language_type.dart';
 import '../../../core/models/operations_models.dart';
 import '../../../core/models/student.dart';
 import '../../../core/models/study_group.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/glass_background.dart';
+import '../../../core/utils/reminder_helper.dart';
 import '../../../shared/widgets/language_badge.dart';
 import '../../../shared/widgets/liquid_glass_container.dart';
 
@@ -24,10 +27,15 @@ class StudentPortalScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authStateProvider).value;
     final profileAsync = ref.watch(studentPortalProfileProvider);
-    final groupsAsync = ref.watch(groupsStreamProvider);
-    final homeworksAsync = ref.watch(homeworksStreamProvider);
-    final teachers = ref.watch(teachersMapProvider);
+    // Security & Quota Optimization: students subscribe ONLY to scoped public collections
+    // (Sharing groups, teacher salaries/phones, raw lessons, and classmate lists are never read).
+    final groupsAsync = ref.watch(publicGroupsStreamProvider);
+    final homeworksAsync = ref.watch(studentHomeworksProvider);
+    final mySubsList = ref.watch(myHomeworkSubmissionsProvider).value ?? const [];
+    final teachers = ref.watch(publicTeachersMapProvider);
     final classrooms = ref.watch(classroomsMapProvider);
+    final matchedStudent = ref.watch(myStudentRecordProvider).value;
+    final myRequests = ref.watch(myRescheduleRequestsProvider).value ?? const [];
     final animateBg = ref.watch(enableAmbientAnimationsProvider);
     final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
 
@@ -39,28 +47,14 @@ class StudentPortalScreen extends ConsumerWidget {
         );
 
     final selectedIds = profile.selectedGroupIds.toSet();
-    final allGroups = groupsAsync.value ?? const <StudyGroup>[];
-    final allHomeworks = homeworksAsync.value ?? const <HomeworkAssignment>[];
-    final allStudents = ref.watch(studentsStreamProvider).value ?? const [];
-    final allRequests =
-        ref.watch(rescheduleRequestsStreamProvider).value ?? const [];
-
-    final normalizedEmail = profile.email.trim().toLowerCase();
-    final matchedStudent = allStudents.cast<Student?>().firstWhere(
-          (s) =>
-              normalizedEmail.isNotEmpty &&
-              s?.email.trim().toLowerCase() == normalizedEmail,
-          orElse: () => null,
-        );
-
-    final myRequests = allRequests
-        .where(
-          (r) =>
-              r.studentUid == profile.uid ||
-              (normalizedEmail.isNotEmpty &&
-                  r.studentEmail.trim().toLowerCase() == normalizedEmail),
-        )
+    final allGroups = (groupsAsync.value ?? const <StudyGroup>[])
+        .where((g) => g.language != CourseLanguage.sharing)
         .toList(growable: false);
+    final allHomeworks = homeworksAsync.value ?? const <HomeworkAssignment>[];
+    final mySubsByHwId = {
+      for (final s in mySubsList)
+        if (s.homeworkId.isNotEmpty) s.homeworkId: s,
+    };
 
     final myHomeworks = allHomeworks
         .where((h) => selectedIds.contains(h.groupId))
@@ -168,8 +162,71 @@ class StudentPortalScreen extends ConsumerWidget {
 
                   if (matchedStudent != null) ...[
                     _StudentProgressCard(student: matchedStudent),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                   ],
+
+                  // Official Center Contacts & Operating Hours
+                  LiquidGlassContainer(
+                    borderRadius: 22,
+                    blurSigma: 18,
+                    elevation: 0.5,
+                    padding: const EdgeInsets.all(16),
+                    child: Wrap(
+                      spacing: 14,
+                      runSpacing: 10,
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '${CenterInfo.centerName} • ${CenterInfo.instagramHandle}',
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '${CenterInfo.address} (${CenterInfo.landmarks})',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              CenterInfo.compactHoursSummary,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            GlassInfoTag(
+                              icon: CupertinoIcons.phone_fill,
+                              label: CenterInfo.primaryPhone,
+                            ),
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: () => ReminderHelper.openWhatsApp(
+                                context,
+                                phone: CenterInfo.whatsappPhone,
+                                message:
+                                    'Hello The Word Center! I am ${profile.fullName} (${profile.email}).',
+                              ),
+                              icon: const Icon(
+                                CupertinoIcons.chat_bubble_fill,
+                                size: 14,
+                              ),
+                              label: const Text('Message Center'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
 
                   // Step 1: Choose Your HSK / English Group
                   Text(
@@ -287,7 +344,8 @@ class StudentPortalScreen extends ConsumerWidget {
                             teacherName:
                                 teachers[hw.teacherId]?.fullName ?? 'Teacher',
                             isDone: hw.isCompletedBy(profile.uid),
-                            submission: hw.submissionFor(profile.uid),
+                            submission:
+                                mySubsByHwId[hw.id] ?? hw.submissionFor(profile.uid),
                             onToggleDone: (done) async {
                               await ref
                                   .read(dataRepositoryProvider)

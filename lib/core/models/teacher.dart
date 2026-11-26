@@ -107,6 +107,17 @@ class Teacher {
     };
   }
 
+  /// Safe minimal projection stored in `public_teachers/{id}` for students (no salaries/phones/emails).
+  Map<String, dynamic> toPublicMap() {
+    return {
+      'id': id,
+      'fullName': fullName,
+      'avatarColorHex': avatarColorHex,
+      'languages': languages.name,
+      'isActive': isActive,
+    };
+  }
+
   factory Teacher.fromMap(Map<String, dynamic> map, {String? documentId}) {
     final rawSpecs = map['specializations'];
     final specs = rawSpecs is Iterable

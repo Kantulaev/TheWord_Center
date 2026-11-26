@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
@@ -42,6 +43,14 @@ Future<({DataRepository dataRepository, AuthRepository authRepository})>
       );
     }
     await Firebase.initializeApp(options: options);
+    try {
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      );
+    } catch (_) {
+      // Multi-tab IndexedDB lock safely falls back to in-memory cache.
+    }
     return (
       dataRepository: FirestoreRepository(),
       authRepository: FirebaseAuthRepository(),

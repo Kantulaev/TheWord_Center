@@ -313,6 +313,10 @@ final teachersStreamProvider = StreamProvider<List<Teacher>>((ref) {
   return ref.watch(dataRepositoryProvider).watchTeachers();
 });
 
+final publicTeachersStreamProvider = StreamProvider<List<Teacher>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchPublicTeachers();
+});
+
 final classroomsStreamProvider = StreamProvider<List<Classroom>>((ref) {
   return ref.watch(dataRepositoryProvider).watchClassrooms();
 });
@@ -321,13 +325,43 @@ final studentsStreamProvider = StreamProvider<List<Student>>((ref) {
   return ref.watch(dataRepositoryProvider).watchStudents();
 });
 
+final myStudentRecordProvider = StreamProvider<Student?>((ref) {
+  final email = ref.watch(authStateProvider).value?.email ?? '';
+  if (email.trim().isEmpty) return Stream.value(null);
+  return ref.watch(dataRepositoryProvider).watchMyStudentRecord(email);
+});
+
 final groupsStreamProvider = StreamProvider<List<StudyGroup>>((ref) {
   return ref.watch(dataRepositoryProvider).watchGroups();
+});
+
+final publicGroupsStreamProvider = StreamProvider<List<StudyGroup>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchPublicGroups();
 });
 
 final homeworksStreamProvider =
     StreamProvider<List<HomeworkAssignment>>((ref) {
   return ref.watch(dataRepositoryProvider).watchHomeworks();
+});
+
+final studentHomeworksProvider =
+    StreamProvider<List<HomeworkAssignment>>((ref) {
+  final ids =
+      ref.watch(studentPortalProfileProvider).value?.selectedGroupIds ??
+          const <String>[];
+  return ref.watch(dataRepositoryProvider).watchHomeworksForGroups(ids);
+});
+
+final allHomeworkSubmissionsProvider =
+    StreamProvider<List<HomeworkSubmission>>((ref) {
+  return ref.watch(dataRepositoryProvider).watchAllHomeworkSubmissions();
+});
+
+final myHomeworkSubmissionsProvider =
+    StreamProvider<List<HomeworkSubmission>>((ref) {
+  final uid = ref.watch(authStateProvider).value?.uid ?? '';
+  if (uid.isEmpty) return Stream.value(const []);
+  return ref.watch(dataRepositoryProvider).watchMyHomeworkSubmissions(uid);
 });
 
 final studentPortalProfileProvider =
@@ -358,6 +392,13 @@ final rescheduleRequestsStreamProvider =
   return ref.watch(dataRepositoryProvider).watchRescheduleRequests();
 });
 
+final myRescheduleRequestsProvider =
+    StreamProvider<List<RescheduleRequest>>((ref) {
+  final uid = ref.watch(authStateProvider).value?.uid ?? '';
+  if (uid.isEmpty) return Stream.value(const []);
+  return ref.watch(dataRepositoryProvider).watchMyRescheduleRequests(uid);
+});
+
 final activityLogsStreamProvider =
     StreamProvider<List<ActivityLogEntry>>((ref) {
   return ref.watch(dataRepositoryProvider).watchActivityLogs();
@@ -369,6 +410,11 @@ final activityLogsStreamProvider =
 
 final teachersMapProvider = Provider<Map<String, Teacher>>((ref) {
   final teachers = ref.watch(teachersStreamProvider).value ?? const [];
+  return {for (final t in teachers) t.id: t};
+});
+
+final publicTeachersMapProvider = Provider<Map<String, Teacher>>((ref) {
+  final teachers = ref.watch(publicTeachersStreamProvider).value ?? const [];
   return {for (final t in teachers) t.id: t};
 });
 

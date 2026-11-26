@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/models/homework.dart';
+import '../../../core/models/language_type.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/confirm_delete_dialog.dart';
@@ -55,7 +56,9 @@ class _HomeworkFormDialogState extends ConsumerState<HomeworkFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final groups = ref.watch(groupsStreamProvider).value ?? const [];
+    final groups = (ref.watch(groupsStreamProvider).value ?? const [])
+        .where((g) => g.language != CourseLanguage.sharing)
+        .toList(growable: false);
     final selectedGroupId = (_groupId != null &&
             groups.any((g) => g.id == _groupId))
         ? _groupId
@@ -230,6 +233,7 @@ class _HomeworkFormDialogState extends ConsumerState<HomeworkFormDialog> {
                             description: _descCtrl.text.trim(),
                             groupId: group.id,
                             teacherId: group.teacherId,
+                            language: group.language,
                             dueDate: _dueDate,
                             createdAt: DateTime.now(),
                           );

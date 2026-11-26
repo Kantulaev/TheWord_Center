@@ -2,6 +2,7 @@ import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../core/models/language_type.dart';
 import '../../../core/models/study_group.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/app_colors.dart';
@@ -216,6 +217,13 @@ class _GroupCard extends StatelessWidget {
                   children: [
                     LanguageBadge(language: group.language, compact: true),
                     GlassInfoTag(label: group.level),
+                    if (group.language == CourseLanguage.sharing)
+                      const StatusBadge(
+                        label: 'Staff Only',
+                        color: AppColors.sharingViolet,
+                        icon: CupertinoIcons.lock_shield_fill,
+                        compact: true,
+                      ),
                   ],
                 ),
               ),
